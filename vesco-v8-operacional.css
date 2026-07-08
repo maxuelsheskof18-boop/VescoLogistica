@@ -2159,3 +2159,47 @@ body.vesco-v9.v8-sidebar-collapsed .v8-badge{
     width:100%;
   }
 }
+
+
+
+/* ============================================================================
+   VESCO V9.4 — pedidos em rota e confirmação de entrega
+   ============================================================================ */
+.v94-route-orders-head{
+  border-top:1px solid #eef2f7;
+  margin-top:14px;
+}
+.v94-route-orders{
+  padding-bottom:8px;
+}
+.v94-route-orders-table{
+  min-width:980px;
+}
+.v94-route-orders-table td small{
+  display:block;
+  margin-top:3px;
+  color:#64748b;
+  font-weight:850;
+}
+.v94-row-route{
+  background:#fffdf7;
+}
+.v94-row-delivered{
+  background:#f0fdf4;
+}
+.v94-route-actions{
+  min-width:260px;
+}
+.v94-route-actions .v8-btn{
+  min-width:96px;
+}
+@media(max-width:760px){
+  .v94-route-actions{
+    display:grid !important;
+    grid-template-columns:1fr;
+    min-width:190px;
+  }
+  .v94-route-orders-table{
+    min-width:920px;
+  }
+}

@@ -1,8 +1,8 @@
-// modulo.vesco-v8-operacional.js — V9.3
+// modulo.vesco-v8-operacional.js — V9.4
 // Correções: Flex sem ERP, logística sem entregues, faturamento mensal com seletor de mês, coordenadas sem inversão.
 
 (function(){
-  if (window.VescoV8 && window.VescoV8.__v93) return;
+  if (window.VescoV8 && window.VescoV8.__v94) return;
 
   const API_MAIN = window.VESCO_API_URL || "https://script.google.com/macros/s/AKfycbxEzbxBABMDwi7B7tn_1p-lC0vc50JjHFOrH3w42Oog2-5R2-WMYSrQ27ED7wduJUN6/exec";
   const API_FLEX = window.VESCO_API_FLEX_URL || "https://script.google.com/macros/s/AKfycbzDp2qs2S_MxDc_3afY1TurNKYEwfYKkk2cc4IliNxLiVaJuSKYyRqofOUMnhdFBjwNwg/exec";
@@ -96,10 +96,18 @@
   function value(o){ const v = pick(o,["valor_num","valor_total","valorPedido","valor_pedido","valor","total","total_pedido","preco_total","preco","valor_nf","valor_venda","receita"]); return parseMoney(v); }
   function isDelivered(o){
     if(String(pick(o,["is_delivered"])).toLowerCase()==="true") return true;
-    if(deliveryDate(o)) return true;
     const s=norm(statusAll(o));
+    if(
+      s.includes("nao entregue") || s.includes("não entregue") ||
+      s.includes("a entregar") || s.includes("saiu para entrega") ||
+      s.includes("em rota") || s.includes("pendente") ||
+      s.includes("a separar") || s.includes("em separacao") ||
+      s.includes("em separação") || s.includes("separado") ||
+      s.includes("pronto")
+    ) return false;
+    if(deliveryDate(o)) return true;
     // Faturado não é entregue. Só sai da Logística quando for Entregue/Finalizado/Concluído ou tiver data real de entrega.
-    return s.includes("entregue") || s.includes("finalizado") || s.includes("concluid");
+    return s==="entregue" || s==="finalizado" || s==="finalizada" || s==="concluido" || s==="concluído" || s.includes("entrega realizada") || s.includes("pedido entregue") || s.includes("confirmado entregue");
   }
 
   function isFlexIndicator(o){
@@ -726,6 +734,7 @@ function layout(){
     const flex=flexList().length;
     const ret=retiradaList().length;
     const pend=pendenciasProdutoList().length;
+    const rotaStats=routeOrdersStats();
     const ent=entreguesList().length;
 
     const daysInMonth=new Date(Number(state.month.slice(0,4)), Number(state.month.slice(5,7)), 0).getDate();
@@ -755,6 +764,7 @@ function layout(){
       {fila:"Pendências produto",total:pend,regra:"Produto/observação a resolver",nivel:pend?"Alta":"Ok",tab:"separacao"},
       {fila:"Separação",total:sep,regra:"ERP aguardando separação",nivel:sep?"Alta":"Ok",tab:"separacao"},
       {fila:"Pronto para Envio",total:pronta,regra:"Pedidos separados aguardando rota",nivel:pronta?"Média":"Ok",tab:"saiu"},
+      {fila:"Pedidos em rota",total:rotaStats.pending,regra:"Aguardando confirmação de entrega",nivel:rotaStats.pending?"Média":"Ok",tab:"saiu"},
       {fila:"Logística ERP",total:log,regra:"ERP não entregue com endereço",nivel:log?"Média":"Ok",tab:"logistica"},
       {fila:"Envios Flex",total:flex,regra:"Planilha Flex validada",nivel:flex?"Média":"Ok",tab:"flex"},
       {fila:"Retiradas / sem rota",total:ret,regra:"Retirada ou sem endereço",nivel:ret?"Baixa":"Ok",tab:"retiradas"}
@@ -782,6 +792,7 @@ function layout(){
         <div class="v9-kpi"><span>Ticket médio</span><strong>${money(total?fatTotal/total:0)}</strong><small>pedidos com valor</small></div>
         <div class="v9-kpi"><span>Logística ERP</span><strong>${log}</strong><small>a entregar</small></div>
         <div class="v9-kpi"><span>Retiradas/Sem rota</span><strong>${ret}</strong><small>não entra no mapa</small></div>
+        <div class="v9-kpi"><span>Em rota</span><strong>${rotaStats.pending}</strong><small>${rotaStats.delivered} entregue(s) na rota</small></div>
         <div class="v9-kpi"><span>Entregues hoje</span><strong>${ent}</strong><small>${br(state.date)}</small></div>
       </div>
 
@@ -1112,6 +1123,151 @@ function layout(){
     return routePedidos(r).length || routeStops(r).length || 0;
   }
 
+  function routeId(r){ return txt(r.rota_id || r.id || r.rota || ""); }
+  function routeToken(r){ return txt(r.token || r.motorista_token || ""); }
+  function routeName(r){ return txt(r.nome_rota || r.nome || "Rota"); }
+
+  function orderByRouteStop(stop){
+    if(!stop) return null;
+    const key=txt(stop.pedido || stop.numero || stop.id || stop.pedido_id || stop.ecom || stop.numero_ecommerce || "");
+    return orderByAnyKey(key) || null;
+  }
+
+  function fallbackOrderFromStop(stop,r){
+    const key=txt(stop && (stop.pedido || stop.numero || stop.id || stop.pedido_id || stop.ecom || stop.numero_ecommerce)) || "";
+    return {
+      id:key,
+      pedido_key:key,
+      numero:key,
+      cliente_nome:txt(stop && (stop.cliente || stop.cliente_nome || stop.destinatario)) || "Cliente",
+      destinatario:txt(stop && (stop.cliente || stop.cliente_nome || stop.destinatario)) || "Cliente",
+      endereco_completo:txt(stop && (stop.endereco || stop.endereco_completo || stop.address)),
+      status_logistica:txt(stop && (stop.status_logistica || stop.status)) || "Em rota",
+      data_prevista:state.date,
+      lat:txt(stop && (stop.lat || stop.latitude)),
+      lon:txt(stop && (stop.lon || stop.lng || stop.longitude)),
+      __routeId:routeId(r),
+      __routeName:routeName(r)
+    };
+  }
+
+  function routeOrdersRows(){
+    const rows=[];
+    const rotas=Array.isArray(state.rotas)?state.rotas:[];
+    rotas.forEach(r=>{
+      const rid=routeId(r);
+      const token=routeToken(r);
+      let stops=routeStops(r);
+      const ids=routePedidos(r);
+
+      if(!stops.length && ids.length){
+        stops=ids.map(id=>({pedido:id}));
+      }
+
+      stops.forEach((stop,idx)=>{
+        const key=txt(stop && (stop.pedido || stop.numero || stop.id || stop.pedido_id || stop.ecom || stop.numero_ecommerce)) || txt(ids[idx] || "");
+        const found=orderByAnyKey(key) || orderByRouteStop(stop);
+        const order=found || fallbackOrderFromStop(Object.assign({}, stop||{}, {pedido:key}), r);
+        rows.push({
+          rota:r,
+          rota_id:rid,
+          token,
+          nome_rota:routeName(r),
+          motorista:txt(r.motorista || ""),
+          origem:txt(r.origem || ""),
+          parada:idx+1,
+          key:key || orderKey(order) || number(order),
+          order,
+          stop:stop || {}
+        });
+      });
+    });
+    return rows;
+  }
+
+  function routeOrdersStats(){
+    const rows=routeOrdersRows();
+    const delivered=rows.filter(row=>isDelivered(row.order)).length;
+    return { total:rows.length, delivered, pending:Math.max(0,rows.length-delivered) };
+  }
+
+  function renderPedidosEmRota(){
+    const rows=routeOrdersRows();
+    if(!rows.length) return '<div class="v8-empty"><b>Nenhum pedido em rota nesta data.</b><br><small>Ao gerar uma rota, os pedidos aparecem aqui para acompanhamento e confirmação.</small></div>';
+
+    return `<div class="v8-table-wrap"><table class="v8-table v94-route-orders-table">
+      <thead><tr><th>Rota</th><th>Parada</th><th>Pedido</th><th>Cliente / endereço</th><th>Status</th><th>Entrega</th><th>Ação</th></tr></thead>
+      <tbody>${rows.map(row=>{
+        const o=row.order||{};
+        const delivered=isDelivered(o);
+        const id=esc(row.key || orderKey(o) || number(o));
+        const rid=esc(row.rota_id);
+        const token=esc(row.token);
+        return `<tr class="${delivered?"v94-row-delivered":"v94-row-route"}">
+          <td><b>${esc(row.nome_rota)}</b><small>${esc(row.motorista||"—")}</small></td>
+          <td><span class="v8-chip blue">${row.parada}</span></td>
+          <td>${orderCell(o)}</td>
+          <td>${clientCell(o)}</td>
+          <td><span class="v8-chip ${delivered?"green":"orange"}">${delivered?"Entregue":"Em rota"}</span></td>
+          <td>${delivered?`<span class="v8-chip green">${br(deliveryDate(o)) || "Confirmada"}</span>`:`<span class="v8-chip orange">Pendente</span>`}</td>
+          <td>
+            <div class="v8-row-actions v94-route-actions">
+              <button class="v8-btn secondary" onclick="VescoV8.openMapForRouteOrder('${id}')">Mapa</button>
+              ${delivered?`<button class="v8-btn secondary" disabled>Confirmado</button>`:`<button class="v8-btn green" onclick="VescoV8.confirmarEntregaRotaSite('${rid}','${token}','${id}')">Confirmar entrega</button>`}
+            </div>
+          </td>
+        </tr>`;
+      }).join("")}</tbody>
+    </table></div>`;
+  }
+
+  function openMapForRouteOrder(id){
+    const row=routeOrdersRows().find(r=>txt(r.key)===txt(id) || txt(number(r.order))===txt(id) || txt(orderKey(r.order))===txt(id));
+    const o=row && row.order;
+    if(!o){ alert("Pedido não encontrado na rota."); return; }
+    const q=(coords(o)?`${coords(o).lat},${coords(o).lon}`:address(o));
+    if(!q){ alert("Endereço não disponível."); return; }
+    const url=new URL("https://www.google.com/maps/search/");
+    url.searchParams.set("api","1");
+    url.searchParams.set("query",q);
+    window.open(url.toString(),"_blank","noopener");
+  }
+
+  async function confirmarEntregaRotaSite(rotaId,token,pedido){
+    const row=routeOrdersRows().find(r=>txt(r.rota_id)===txt(rotaId) && (txt(r.key)===txt(pedido) || txt(number(r.order))===txt(pedido) || txt(orderKey(r.order))===txt(pedido)));
+    const o=row && row.order;
+    const numero=number(o)||pedido;
+    const recebedor=prompt(`Quem recebeu o pedido #${numero}?`);
+    if(!txt(recebedor)) return;
+    const documento=prompt("Documento/observação de quem recebeu:") || "";
+    const observacao=prompt("Observação da entrega:", "Confirmado pelo painel Vesco") || "Confirmado pelo painel Vesco";
+
+    try{
+      showLoading(true);
+      const resp=await jsonp(API_MAIN,{
+        action:"confirmarEntregaMotorista",
+        rota:rotaId,
+        rota_id:rotaId,
+        token,
+        pedido,
+        recebedor,
+        documento,
+        transportador:"Painel Vesco",
+        observacao
+      },30000);
+      showLoading(false);
+      if(!resp || resp.success===false) throw new Error(resp && resp.error ? resp.error : "Não foi possível confirmar entrega.");
+      await loadData(true);
+      renderProntoEnvio();
+      alert("Entrega confirmada com sucesso.");
+      return resp;
+    }catch(e){
+      showLoading(false);
+      alert("Erro ao confirmar entrega: " + (e.message || e));
+      return null;
+    }
+  }
+
   function renderRotasCriadas(){
     const rotas=Array.isArray(state.rotas)?state.rotas:[];
     if(!rotas.length) return '<div class="v8-empty"><b>Nenhuma rota criada nesta data.</b></div>';
@@ -1174,12 +1330,15 @@ function layout(){
     setPage("Pronto para Envio","Pedidos separados disponíveis para montar rota.");
     const content=document.getElementById("v8Content");
     content.innerHTML=`
-      ${kpis([
-        {label:"Disponíveis",value:String(list.length),small:`${erpCount} ERP + ${flexCount} Flex adicionado(s)`},
-        {label:"Separados ERP",value:String(sepSource.length),small:"carregados da separação"},
-        {label:"Valor",value:money(list.reduce((s,o)=>s+value(o),0)),small:"pedidos selecionáveis"},
-        {label:"Mapa interno",value:String(list.filter(coords).length),small:"com lat/lon"}
-      ])}
+      ${(()=>{
+        const rs=routeOrdersStats();
+        return kpis([
+          {label:"Disponíveis",value:String(list.length),small:`${erpCount} ERP + ${flexCount} Flex adicionado(s)`},
+          {label:"Separados ERP",value:String(sepSource.length),small:"carregados da separação"},
+          {label:"Em rota",value:String(rs.pending),small:`${rs.total} em rotas / ${rs.delivered} entregue(s)`},
+          {label:"Valor",value:money(list.reduce((s,o)=>s+value(o),0)),small:"pedidos selecionáveis"}
+        ]);
+      })()}
 
       <div class="v8-grid v9-route-grid">
         <div class="v8-card">
@@ -1230,6 +1389,12 @@ function layout(){
 
           <div class="v8-card-head v9-routes-created"><div><h3>Rotas criadas</h3><small>${(state.rotas||[]).length} rota(s) na data</small></div></div>
           <div class="v8-routes-list">${renderRotasCriadas()}</div>
+
+          <div class="v8-card-head v94-route-orders-head">
+            <div><h3>Pedidos em rota / confirmação de entrega</h3><small>Acompanhe o que saiu em rota e confirme pelo site quando necessário.</small></div>
+            <button class="v8-btn secondary" onclick="VescoV8.refresh()">Atualizar status</button>
+          </div>
+          <div class="v94-route-orders">${renderPedidosEmRota()}</div>
         </div>
 
         <div class="v8-card v8-map-card">
@@ -1856,19 +2021,19 @@ function render(){
   async function go(tab){ state.tab=tab; await ensureData(); render(); }
   function interceptOldClicks(){ document.addEventListener("click",e=>{ const btn=e.target.closest?.("[data-v7tab], [data-v8tab], #v7Sidebar button, .tab-nav button"); if(!btn)return; const label=norm(btn.dataset.v7tab||btn.dataset.v8tab||btn.textContent||""); const map={"dashboard":"dashboard","separacao":"separacao","separados hoje":"separados","separados":"separados","logistica":"logistica","logistica erp":"logistica","logística":"logistica","pronto para envio":"saiu","retiradas":"retiradas","tarefas frota":"tarefas","tarefas":"tarefas","frota":"tarefas","envios flex":"flex","flex":"flex","entregues":"entregues"}; const tab=map[label]||(label.includes("separados")?"separados":label.includes("log")?"logistica":label.includes("flex")?"flex":""); if(tab){e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); go(tab);}},true); }
   async function init(){ state.tarefas=loadTarefas(); autoCleanFlexStorageV87(); layout(); interceptOldClicks(); window.focusOrderOnMap=id=>focus("logistica",id); window.focusFlexOnMap=id=>focus("flex",id); await loadData(true); render(); }
-  window.VescoV8={__v82:true,__v821:true,__v84:true,__v86:true,__v861:true,__v87:true,__v871:true,__v872:true,__v873:true,__v874:true,__v875:true,__v876:true,__v90:true,__v91:true,__v92:true,__v921:true,__v922:true,__v93:true,state,init,go,
+  window.VescoV8={__v82:true,__v821:true,__v84:true,__v86:true,__v861:true,__v87:true,__v871:true,__v872:true,__v873:true,__v874:true,__v875:true,__v876:true,__v90:true,__v91:true,__v92:true,__v921:true,__v922:true,__v93:true,__v94:true,state,init,go,
     openFlexMonth:async(month)=>{state.month=month||state.month; const m=document.getElementById("v8Month"); if(m)m.value=state.month; await loadData(true); renderFlex();},
     saveFlexMonthNow:()=>{const saved=saveStoredFlex(flexList(),state.month); alert(saved.saved?`Mês armazenado: ${monthLabel(saved.month)} — ${saved.total} pedido(s).`:`Nada novo para armazenar em ${monthLabel(saved.month)}.`); renderFlex(); return saved;},
     refreshFlexOnly:async()=>{await loadData(true); saveStoredFlex(state.flex,state.month); renderFlex();},
     clearFlexStorage:()=>{const removed=clearFlexStorage(); alert(`Armazenamento Flex limpo: ${removed.length} item(ns). Clique em Atualizar Flex.`); renderFlex(); return removed;},
     autoCleanFlexStorageV87,
     sleep,
-    routeReadyList,routeFlexExtras,addFlexToRouteByCode,removeFlexFromRoute,routeMotoristaLink,routeOfflinePayload,encodeRoutePayload,
+    routeReadyList,routeFlexExtras,addFlexToRouteByCode,removeFlexFromRoute,routeMotoristaLink,routeOfflinePayload,encodeRoutePayload,routeOrdersRows,routeOrdersStats,renderPedidosEmRota,confirmarEntregaRotaSite,openMapForRouteOrder,
     salvarDetalhesPedido,marcarPendenciaProduto,resolverPendenciaProduto,pendenciasProdutoList,abrirRelatorioPendencia,abrirObsLinkPedido,salvarObsLinkPedido,salvarRelatorioPendencia,fecharPedidoModal,
     runFlexGeocode,statusFlexGeocode,autoGeocodeMap,geocodeAddressViaFlexApi,openMapForOrder,openGoogleMapsForList,googleMapsDirectionsUrlFromOrders,
     renderTarefasFrota,registrarTarefaFrota,concluirTarefaFrota,removerTarefaFrota,tarefasFrotaList,
     sidebar:()=>{state.sidebarCollapsed=!state.sidebarCollapsed; document.body.classList.toggle("v8-sidebar-collapsed",state.sidebarCollapsed); localStorage.setItem("vesco:v8:sidebarCollapsed",state.sidebarCollapsed?"1":"0");},
-    today:async()=>{state.date=todayISO(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; await loadData(true); render();},refresh:async()=>{await loadData(true); render();},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{version:"V9.3",date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
+    today:async()=>{state.date=todayISO(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; await loadData(true); render();},refresh:async()=>{await loadData(true); render();},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{version:"V9.4",date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",init); else init();
-  console.log("VESCO V9.3 ativo — link motorista com rota offline, abre mesmo se Apps Script estiver lento.");
+  console.log("VESCO V9.4 ativo — pedidos em rota e confirmação de entrega pelo site ou app motorista.");
 })();
