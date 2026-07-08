@@ -2257,3 +2257,22 @@ body.vesco-v9.v8-sidebar-collapsed .v8-badge{
   .v95-share-actions{grid-template-columns:1fr}
   .v95-share-actions .v8-btn{width:100%}
 }
+
+
+
+/* ============================================================================
+   VESCO V10 — Firebase realtime
+   ============================================================================ */
+body.vesco-firebase-online #v8Topbar::after{
+  content:"Firebase online";
+  display:inline-flex;
+  align-items:center;
+  height:28px;
+  padding:0 10px;
+  border-radius:999px;
+  background:#dcfce7;
+  color:#047857;
+  font-size:11px;
+  font-weight:1000;
+  margin-left:6px;
+}

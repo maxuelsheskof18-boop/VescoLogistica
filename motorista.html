@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Vesco Motorista V9.5</title>
+  <title>Vesco Motorista V10.1</title>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <style>
@@ -52,7 +52,7 @@ const rota=qs.get('rota') || qs.get('route') || '';
 const token=qs.get('token') || '';
 const packedData=qs.get('data') || '';
 const STORE=qs.get('store') || '';
-const FIREBASE_DB=(qs.get('fb') || window.VESCO_FIREBASE_DATABASE_URL || '').replace(/\/+$/,'');
+const FIREBASE_DB=(qs.get('fb') || window.VESCO_FIREBASE_DATABASE_URL || 'https://dashlogistica-49689-default-rtdb.firebaseio.com').replace(/\/+$/,'');
 
 let state={rota:null,pedidos:[],offline:false,apiError:''};
 
@@ -243,27 +243,105 @@ function render(){
 function openForm(id){ document.querySelectorAll('.form.open').forEach(f=>f.classList.remove('open')); const f=document.querySelector(`[data-form-for="${CSS.escape(id)}"]`); if(f){f.classList.add('open');f.scrollIntoView({behavior:'smooth',block:'center'});} }
 function closeForm(id){ const f=document.querySelector(`[data-form-for="${CSS.escape(id)}"]`); if(f)f.classList.remove('open'); }
 
+
+async function saveDeliveryFirebase(id, payload){
+  if(!FIREBASE_DB || !rota) return null;
+  const dataBR=new Date().toLocaleDateString('pt-BR');
+  const safePedido=firebaseSafeId(id);
+  const safeRota=firebaseSafeId(rota);
+  const entrega=Object.assign({}, payload, {
+    pedido:id,
+    status_logistica:'Entregue',
+    data_entrega_realizada:dataBR,
+    entregue_em:new Date().toISOString(),
+    updated_at:new Date().toISOString()
+  });
+  await fetch(FIREBASE_DB + '/vesco_rotas_motorista/' + encodeURIComponent(safeRota) + '/entregas/' + encodeURIComponent(safePedido) + '.json', {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(entrega)
+  });
+  await fetch(FIREBASE_DB + '/vesco_operacao/orders/' + encodeURIComponent(safePedido) + '.json', {
+    method:'PATCH',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      status_logistica:'Entregue',
+      situacao_nome:'Entregue',
+      nome_recebedor:payload.recebedor,
+      doc_recebedor:payload.documento,
+      data_entrega_realizada:dataBR,
+      entregue_em:entrega.entregue_em,
+      updated_at:entrega.updated_at
+    })
+  });
+  return entrega;
+}
+
+
 async function confirmar(ev,id){
   ev.preventDefault();
-  if(state.offline){
-    toast('Rota em modo offline. Tentando confirmar online...',2500);
-  }
   const form=ev.currentTarget;
   const recebedor=form.recebedor.value.trim();
   const documento=form.documento.value.trim();
   const doc=onlyDigits(documento);
   if(!recebedor) return toast('Informe o nome de quem recebeu.');
   if(doc.length<8 || doc.length>14) return toast('Documento inválido. Use RG/CPF com 8 a 14 números.');
-  const btn=form.querySelector('button[type="submit"]'); if(btn)btn.disabled=true;
+
+  const btn=form.querySelector('button[type="submit"]');
+  if(btn)btn.disabled=true;
+
+  const payload={
+    recebedor,
+    documento,
+    transportador:form.transportador.value,
+    observacao:form.observacao.value.trim()
+  };
+
+  let firebaseOk=false;
+
   try{
-    const res=await jsonp({action:'confirmarEntregaMotorista',rota,rota_id:rota,token,pedido:id,recebedor,documento,transportador:form.transportador.value,observacao:form.observacao.value.trim()},22000);
-    if(!res || !res.success) throw new Error((res&&res.error)||'Não foi possível confirmar.');
-    toast('Entrega registrada.');
-    const p=state.pedidos.find(x=>String(x.id||x.pedido_key||x.numero||x.pedido)===String(id));
-    if(p){p.status_logistica='Entregue';p.nome_recebedor=recebedor;p.doc_recebedor=documento;p.entregue_em=new Date().toISOString();}
-    render();
+    if(FIREBASE_DB){
+      await saveDeliveryFirebase(id, payload);
+      firebaseOk=true;
+      const p=state.pedidos.find(x=>String(x.id||x.pedido_key||x.numero||x.pedido)===String(id));
+      if(p){
+        p.status_logistica='Entregue';
+        p.nome_recebedor=recebedor;
+        p.doc_recebedor=documento;
+        p.entregue_em=new Date().toISOString();
+        p.data_entrega_realizada=new Date().toLocaleDateString('pt-BR');
+      }
+      render();
+      toast('Entrega confirmada em tempo real.');
+    }
+
+    // Apps Script em segundo plano/fallback. Se falhar, Firebase já confirmou.
+    jsonp({
+      action:'confirmarEntregaMotorista',
+      rota, rota_id:rota, token, pedido:id,
+      recebedor, documento,
+      transportador:form.transportador.value,
+      observacao:form.observacao.value.trim()
+    },22000).then(res=>{
+      if(!res || !res.success) console.warn('Apps Script não confirmou, mas Firebase confirmou.', res);
+    }).catch(e=>console.warn('Apps Script indisponível; Firebase manteve a entrega.', e.message||e));
+
+    if(!firebaseOk){
+      const res=await jsonp({
+        action:'confirmarEntregaMotorista',
+        rota, rota_id:rota, token, pedido:id,
+        recebedor, documento,
+        transportador:form.transportador.value,
+        observacao:form.observacao.value.trim()
+      },22000);
+      if(!res || !res.success) throw new Error((res&&res.error)||'Não foi possível confirmar.');
+      toast('Entrega registrada.');
+      const p=state.pedidos.find(x=>String(x.id||x.pedido_key||x.numero||x.pedido)===String(id));
+      if(p){p.status_logistica='Entregue';p.nome_recebedor=recebedor;p.doc_recebedor=documento;p.entregue_em=new Date().toISOString();}
+      render();
+    }
   }catch(e){
-    toast('Não confirmou online: '+(e.message||e),5000);
+    toast('Não confirmou: '+(e.message||e),5000);
     if(btn)btn.disabled=false;
   }
 }
