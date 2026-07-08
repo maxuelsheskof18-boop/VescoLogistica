@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Vesco Motorista V10.3</title>
+  <title>Vesco Motorista V10.4</title>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <style>
@@ -195,10 +195,10 @@ function render(){
           <h2>${esc(rotaObj.nome||'Rota do motorista')}</h2>
           <div class="muted">Motorista: ${esc(rotaObj.motorista||'—')} • Partida: ${esc(rotaObj.origem||'Rua São Leopoldo 92')}</div>
         </div>
-        <span class="badge ${state.offline?'warn':'ok'}">${state.offline?'Modo offline':'Online'}</span>
+        <span class="badge ${state.offline?'warn':'ok'}">${state.offline?'Link rápido':'Online'}</span>
       </div>
-      ${state.offline?`<div class="card offline-note"><b>Atenção:</b> a rota abriu pelos dados salvos no próprio link. O mapa funciona, mas confirmar entrega depende do Apps Script voltar.</div>`:''}
-      ${state.apiError?`<div class="card offline-note"><b>API:</b> ${esc(state.apiError)}</div>`:''}
+      ${state.offline?`<div class="card offline-note"><b>Atenção:</b> a rota abriu pelos dados do próprio link. O mapa funciona normalmente e a baixa da entrega será salva no Firebase se houver internet/5G. O Apps Script fica só como fallback.</div>`:''}
+      ${state.apiError?`<div class="card offline-note"><b>Sincronização:</b> ${esc(state.apiError)}</div>`:''}
       <div class="stats">
         <div class="stat"><b>${pedidos.length}</b><span>Total</span></div>
         <div class="stat"><b>${pendentes}</b><span>Pendentes</span></div>

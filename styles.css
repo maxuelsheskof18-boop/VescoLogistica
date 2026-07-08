@@ -2326,3 +2326,17 @@ body.vesco-v9 #v8Topbar::after{
     width:100%;
   }
 }
+
+
+
+/* ============================================================================
+   VESCO V10.4 — ações diretas de compartilhar rota
+   ============================================================================ */
+.v8-route-actions a.v8-btn.green{
+  background:#22c55e;
+  color:#fff;
+  box-shadow:0 10px 24px rgba(34,197,94,.18);
+}
+.v8-route-actions button[type="button"]{
+  cursor:pointer;
+}
