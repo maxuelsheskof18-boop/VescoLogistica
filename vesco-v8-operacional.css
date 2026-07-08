@@ -2482,3 +2482,13 @@ body.vesco-v9.v8-sidebar-collapsed .v105-menu-badge{
 .v8-menu button.has-v105-badge i{
   filter:drop-shadow(0 0 6px rgba(239,68,68,.45));
 }
+
+
+/* ============================================================================
+   VESCO V10.8 — Hotfix travamento motorista ao vivo
+   ============================================================================ */
+.v106-driver-live .v8-empty{
+  border:1px dashed #bfdbfe;
+  border-radius:16px;
+  background:#f8fbff;
+}
