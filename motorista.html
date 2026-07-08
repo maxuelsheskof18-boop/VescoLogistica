@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Vesco Motorista</title>
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    :root{--bg:#eef3f8;--card:#fff;--dark:#0b172a;--blue:#1769ff;--green:#0f9f6e;--orange:#f59e0b;--line:#dbe5f1}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;color:#111827}
+    header{position:sticky;top:0;background:#0b172a;color:#fff;padding:14px 16px;z-index:10;box-shadow:0 12px 30px rgba(15,23,42,.18)}
+    header h1{margin:0;font-size:18px;font-weight:1000} header small{color:#93c5fd;font-weight:800}
+    main{max-width:920px;margin:0 auto;padding:16px}
+    .card{background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:0 14px 34px rgba(15,23,42,.08);padding:14px;margin:12px 0}
+    .order{display:grid;gap:8px} .order h3{margin:0;font-size:16px} .muted{color:#64748b;font-size:12px;font-weight:750}
+    .actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+    button,a.btn{height:42px;border:0;border-radius:12px;background:var(--blue);color:#fff;font-weight:1000;display:flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer}
+    a.maps{background:#fff;color:var(--blue);border:1px solid #cfe1ff} a.waze{background:var(--orange);color:#111827} button.done{background:var(--green)}
+    input{width:100%;height:40px;border:1px solid var(--line);border-radius:12px;padding:0 10px;font-weight:800}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.route-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.copy{background:#fff;color:var(--blue);border:1px solid #cfe1ff} @media(max-width:620px){.actions,.grid{grid-template-columns:1fr}.route-actions button,.route-actions a{width:100%}}
+  </style>
+</head>
+<body>
+<header><h1>Vesco Motorista</h1><small id="sub">Carregando rota...</small></header>
+<main id="app"><div class="card">Carregando...</div></main>
+<script>
+const qs=new URLSearchParams(location.search);
+const API=qs.get('api') || 'https://script.google.com/macros/s/AKfycbxEzbxBABMDwi7B7tn_1p-lC0vc50JjHFOrH3w42Oog2-5R2-WMYSrQ27ED7wduJUN6/exec';
+const rota=qs.get('rota') || '';
+const token=qs.get('token') || '';
+
+function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function jsonp(params,timeout=16000){
+  return new Promise((resolve,reject)=>{
+    const cb='__mot_cb_'+Math.random().toString(36).slice(2);
+    const s=document.createElement('script');
+    const timer=setTimeout(()=>{cleanup();reject(new Error('timeout'));},timeout);
+    function cleanup(){clearTimeout(timer);try{delete window[cb]}catch(e){};s.remove();}
+    window[cb]=d=>{cleanup();resolve(d);};
+    s.onerror=()=>{cleanup();reject(new Error('erro api'));};
+    const u=new URL(API); Object.entries({...params,callback:cb,_v:Date.now()}).forEach(([k,v])=>u.searchParams.set(k,v));
+    s.src=u.toString(); document.head.appendChild(s);
+  });
+}
+function mapsLink(p){
+  const q=p.lat&&p.lon ? `${p.lat},${p.lon}` : (p.endereco_completo||p.endereco||'');
+  const u=new URL('https://www.google.com/maps/search/');
+  u.searchParams.set('api','1'); u.searchParams.set('query',q); return u.toString();
+}
+function wazeLink(p){
+  const u=new URL('https://waze.com/ul');
+  if(p.lat&&p.lon) u.searchParams.set('ll',`${p.lat},${p.lon}`);
+  else u.searchParams.set('q',p.endereco_completo||p.endereco||'');
+  u.searchParams.set('navigate','yes'); return u.toString();
+}
+async function copyCurrentLink(){
+  const link=location.href;
+  try{
+    if(navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(link);
+    else{
+      const ta=document.createElement('textarea'); ta.value=link; ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.left='-9999px';
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+    }
+    alert('Link da rota copiado.');
+  }catch(e){
+    const ta=document.createElement('textarea'); ta.value=link; document.body.appendChild(ta); ta.select();
+    try{document.execCommand('copy'); alert('Link da rota copiado.');}catch(err){prompt('Copie o link da rota:', link);}
+    ta.remove();
+  }
+}
+async function load(){
+  if(!rota){document.getElementById('app').innerHTML='<div class="card">Link sem rota.</div>';return;}
+  const data=await jsonp({action:'motoristaPedidos',rota,rota_id:rota,token});
+  if(!data.success) throw new Error(data.error||'Erro ao carregar rota');
+  document.getElementById('sub').textContent=`${data.nome_rota||'Rota'} • Motorista: ${data.motorista||'—'} • ${(data.pedidos||[]).length} pedido(s)`;
+  const pedidos=data.pedidos||[];
+  document.getElementById('app').innerHTML=`
+    <div class="card"><b>Origem:</b> ${esc(data.origem||'Rua São Leopoldo 92')}<div class="route-actions"><button class="copy" onclick="copyCurrentLink()"><i class="fa-solid fa-copy"></i>&nbsp; Copiar link da rota</button></div></div>
+    ${pedidos.map(p=>`
+      <div class="card order">
+        <h3>#${esc(p.numero||p.pedido||p.id||'')} — ${esc(p.cliente_nome||p.cliente||p.destinatario||'Cliente')}</h3>
+        <div class="muted">${esc(p.endereco_completo||p.endereco||'Endereço não disponível')}</div>
+        <div class="actions">
+          <a class="btn maps" target="_blank" href="${mapsLink(p)}"><i class="fa-solid fa-map-location-dot"></i>&nbsp; Google Maps</a>
+          <a class="btn waze" target="_blank" href="${wazeLink(p)}"><i class="fa-brands fa-waze"></i>&nbsp; Waze</a>
+          <button class="done" onclick="confirmar('${esc(p.numero||p.pedido||p.id||'')}')"><i class="fa-solid fa-check"></i>&nbsp; Entregue</button>
+        </div>
+      </div>`).join('') || '<div class="card">Nenhum pedido na rota.</div>'}
+  `;
+}
+async function confirmar(pedido){
+  const recebedor=prompt('Nome de quem recebeu:')||'';
+  if(!recebedor) return;
+  const documento=prompt('Documento/observação:')||'';
+  const res=await jsonp({action:'confirmarEntregaMotorista',rota,rota_id:rota,token,pedido,recebedor,documento});
+  if(res.success){alert('Entrega registrada.'); load();} else alert(res.error||'Erro ao registrar');
+}
+load().catch(e=>document.getElementById('app').innerHTML='<div class="card">Erro: '+esc(e.message)+'</div>');
+</script>
+</body>
+</html>
