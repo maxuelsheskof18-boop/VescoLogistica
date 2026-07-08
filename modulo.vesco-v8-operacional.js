@@ -1,8 +1,8 @@
-// modulo.vesco-v8-operacional.js — V9.2.1
+// modulo.vesco-v8-operacional.js — V9.2.2
 // Correções: Flex sem ERP, logística sem entregues, faturamento mensal com seletor de mês, coordenadas sem inversão.
 
 (function(){
-  if (window.VescoV8 && window.VescoV8.__v921) return;
+  if (window.VescoV8 && window.VescoV8.__v922) return;
 
   const API_MAIN = window.VESCO_API_URL || "https://script.google.com/macros/s/AKfycbxEzbxBABMDwi7B7tn_1p-lC0vc50JjHFOrH3w42Oog2-5R2-WMYSrQ27ED7wduJUN6/exec";
   const API_FLEX = window.VESCO_API_FLEX_URL || "https://script.google.com/macros/s/AKfycbzDp2qs2S_MxDc_3afY1TurNKYEwfYKkk2cc4IliNxLiVaJuSKYyRqofOUMnhdFBjwNwg/exec";
@@ -152,14 +152,57 @@
 
   function jsonp(url, params={}, timeout=18000){
     return new Promise((resolve,reject)=>{
-      const cb="__vesco_v81_cb_"+Math.random().toString(36).slice(2);
+      const cb="__vesco_v92_cb_"+Math.random().toString(36).slice(2);
       const qs=new URLSearchParams({...params, callback:cb, _v:Date.now()});
-      const script=document.createElement("script"); let done=false;
-      const timer=setTimeout(()=>{ if(done)return; done=true; cleanup(); reject(new Error("timeout")); }, timeout);
-      function cleanup(){ clearTimeout(timer); try{delete window[cb]}catch(e){window[cb]=undefined} try{script.remove()}catch(e){} }
-      window[cb]=data=>{ if(done)return; done=true; cleanup(); resolve(data); };
-      script.onerror=()=>{ if(done)return; done=true; cleanup(); reject(new Error("jsonp error")); };
-      script.src=url+(url.includes("?")?"&":"?")+qs.toString(); document.head.appendChild(script);
+      const script=document.createElement("script");
+      let done=false;
+
+      function installLateSafeStub(){
+        // Apps Script às vezes responde depois do timeout. Se apagarmos o callback,
+        // o navegador gera "ReferenceError: __vesco... is not defined".
+        // Mantemos um callback vazio por 2 minutos só para absorver resposta atrasada.
+        window[cb]=function(){};
+        setTimeout(()=>{
+          try{ delete window[cb]; }
+          catch(e){ try{ window[cb]=undefined; }catch(_e){} }
+        },120000);
+      }
+
+      function cleanup(mode){
+        clearTimeout(timer);
+        try{ script.onload=null; script.onerror=null; }catch(e){}
+        try{ script.remove(); }catch(e){}
+        if(mode==="late-safe") installLateSafeStub();
+        else {
+          try{ delete window[cb]; }
+          catch(e){ try{ window[cb]=undefined; }catch(_e){} }
+        }
+      }
+
+      const timer=setTimeout(()=>{
+        if(done) return;
+        done=true;
+        cleanup("late-safe");
+        reject(new Error("timeout"));
+      }, timeout);
+
+      window[cb]=data=>{
+        if(done) return;
+        done=true;
+        cleanup("normal");
+        resolve(data);
+      };
+
+      script.onerror=()=>{
+        if(done) return;
+        done=true;
+        cleanup("late-safe");
+        reject(new Error("jsonp error"));
+      };
+
+      script.async=true;
+      script.src=url+(url.includes("?")?"&":"?")+qs.toString();
+      document.head.appendChild(script);
     });
   }
   function extractArray(obj,names){ if(!obj||typeof obj!=="object") return []; for(const n of names) if(Array.isArray(obj[n])) return obj[n]; if(obj.data&&typeof obj.data==="object") for(const n of names) if(Array.isArray(obj.data[n])) return obj.data[n]; if(Array.isArray(obj.data)) return obj.data; if(Array.isArray(obj.rows)) return obj.rows; return []; }
@@ -301,7 +344,7 @@
       if(apiOrders.length) orders=apiOrders.filter(o=>!o.is_flex);
       // Importante: a planilha ERP não é fonte de Flex. Flex vem do Apps Script Flex.
     }catch(e){
-      console.warn("V9.2.1: API ERP demorou ou não respondeu; usando dados locais temporariamente.",e.message);
+      console.warn("V9.2.2: API ERP demorou ou não respondeu; usando dados locais temporariamente.",e.message);
       orders=localOrders().map(o=>normalizeOrder(o,"erp")).filter(o=>!o.is_flex);
     }
 
@@ -336,7 +379,7 @@
     }
 
     try{
-      const rp=await jsonp(API_MAIN,{action:"listarRotasMotorista",dataISO:state.date},12000);
+      const rp=await jsonp(API_MAIN,{action:"listarRotasMotorista",dataISO:state.date},45000);
       rotas=extractArray(rp,["rotas","data","rows"]);
     }catch(e){
       rotas=[];
@@ -1772,7 +1815,7 @@ function render(){
   async function go(tab){ state.tab=tab; await ensureData(); render(); }
   function interceptOldClicks(){ document.addEventListener("click",e=>{ const btn=e.target.closest?.("[data-v7tab], [data-v8tab], #v7Sidebar button, .tab-nav button"); if(!btn)return; const label=norm(btn.dataset.v7tab||btn.dataset.v8tab||btn.textContent||""); const map={"dashboard":"dashboard","separacao":"separacao","separados hoje":"separados","separados":"separados","logistica":"logistica","logistica erp":"logistica","logística":"logistica","pronto para envio":"saiu","retiradas":"retiradas","tarefas frota":"tarefas","tarefas":"tarefas","frota":"tarefas","envios flex":"flex","flex":"flex","entregues":"entregues"}; const tab=map[label]||(label.includes("separados")?"separados":label.includes("log")?"logistica":label.includes("flex")?"flex":""); if(tab){e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); go(tab);}},true); }
   async function init(){ state.tarefas=loadTarefas(); autoCleanFlexStorageV87(); layout(); interceptOldClicks(); window.focusOrderOnMap=id=>focus("logistica",id); window.focusFlexOnMap=id=>focus("flex",id); await loadData(true); render(); }
-  window.VescoV8={__v82:true,__v821:true,__v84:true,__v86:true,__v861:true,__v87:true,__v871:true,__v872:true,__v873:true,__v874:true,__v875:true,__v876:true,__v90:true,__v91:true,__v92:true,__v921:true,state,init,go,
+  window.VescoV8={__v82:true,__v821:true,__v84:true,__v86:true,__v861:true,__v87:true,__v871:true,__v872:true,__v873:true,__v874:true,__v875:true,__v876:true,__v90:true,__v91:true,__v92:true,__v921:true,__v922:true,state,init,go,
     openFlexMonth:async(month)=>{state.month=month||state.month; const m=document.getElementById("v8Month"); if(m)m.value=state.month; await loadData(true); renderFlex();},
     saveFlexMonthNow:()=>{const saved=saveStoredFlex(flexList(),state.month); alert(saved.saved?`Mês armazenado: ${monthLabel(saved.month)} — ${saved.total} pedido(s).`:`Nada novo para armazenar em ${monthLabel(saved.month)}.`); renderFlex(); return saved;},
     refreshFlexOnly:async()=>{await loadData(true); saveStoredFlex(state.flex,state.month); renderFlex();},
@@ -1784,7 +1827,7 @@ function render(){
     runFlexGeocode,statusFlexGeocode,autoGeocodeMap,geocodeAddressViaFlexApi,openMapForOrder,openGoogleMapsForList,googleMapsDirectionsUrlFromOrders,
     renderTarefasFrota,registrarTarefaFrota,concluirTarefaFrota,removerTarefaFrota,tarefasFrotaList,
     sidebar:()=>{state.sidebarCollapsed=!state.sidebarCollapsed; document.body.classList.toggle("v8-sidebar-collapsed",state.sidebarCollapsed); localStorage.setItem("vesco:v8:sidebarCollapsed",state.sidebarCollapsed?"1":"0");},
-    today:async()=>{state.date=todayISO(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; await loadData(true); render();},refresh:async()=>{await loadData(true); render();},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{version:"V9.2.1",date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
+    today:async()=>{state.date=todayISO(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; await loadData(true); render();},refresh:async()=>{await loadData(true); render();},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{version:"V9.2.2",date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",init); else init();
-  console.log("VESCO V9.2.1 ativo — alias styles.css e timeout ERP ampliado.");
+  console.log("VESCO V9.2.2 ativo — JSONP protegido contra retorno atrasado/404 de rota.");
 })();
