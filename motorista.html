@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Vesco Motorista V10.5</title>
+  <title>Vesco Motorista V10.6</title>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <style>
@@ -55,6 +55,9 @@ const STORE=qs.get('store') || '';
 const FIREBASE_DB=(qs.get('fb') || window.VESCO_FIREBASE_DATABASE_URL || 'https://dashlogistica-49689-default-rtdb.firebaseio.com').replace(/\/+$/,'');
 
 let state={rota:null,pedidos:[],offline:false,apiError:''};
+let geoWatchId=null;
+let geoTracking=false;
+let lastLocation=null;
 
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function txt(v){return String(v??'').trim();}
@@ -238,10 +241,118 @@ function render(){
       </article>`;
     }).join('') || '<div class="card">Nenhum pedido na rota.</div>'}
   `;
+  updateTrackingUi();
 }
 
 function openForm(id){ document.querySelectorAll('.form.open').forEach(f=>f.classList.remove('open')); const f=document.querySelector(`[data-form-for="${CSS.escape(id)}"]`); if(f){f.classList.add('open');f.scrollIntoView({behavior:'smooth',block:'center'});} }
 function closeForm(id){ const f=document.querySelector(`[data-form-for="${CSS.escape(id)}"]`); if(f)f.classList.remove('open'); }
+
+
+
+function trackingPayloadFromPosition(pos){
+  const c=pos.coords || {};
+  return {
+    rota_id:rota,
+    token,
+    motorista:(state.rota && state.rota.motorista) || '',
+    nome_rota:(state.rota && (state.rota.nome||state.rota.nome_rota)) || '',
+    lat:c.latitude,
+    lon:c.longitude,
+    latitude:c.latitude,
+    longitude:c.longitude,
+    precisao_m:c.accuracy || '',
+    velocidade_ms:c.speed || 0,
+    velocidade_kmh:c.speed ? Math.round(c.speed*3.6) : 0,
+    heading:c.heading || '',
+    updated_at:new Date().toISOString(),
+    atualizado_em:new Date().toISOString(),
+    user_agent:navigator.userAgent || ''
+  };
+}
+async function saveLocationFirebase(payload){
+  if(!FIREBASE_DB || !rota || !payload) return null;
+  const safeRota=firebaseSafeId(rota);
+  const ts=Date.now();
+  lastLocation=payload;
+  await fetch(FIREBASE_DB + '/vesco_motoristas_localizacao/' + encodeURIComponent(safeRota) + '/atual.json', {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(payload)
+  });
+  await fetch(FIREBASE_DB + '/vesco_motoristas_localizacao/' + encodeURIComponent(safeRota) + '/percurso/' + ts + '.json', {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(payload)
+  });
+  await fetch(FIREBASE_DB + '/vesco_rotas_motorista/' + encodeURIComponent(safeRota) + '/localizacao_atual.json', {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(payload)
+  }).catch(()=>{});
+  return payload;
+}
+function updateTrackingUi(){
+  const btn=document.getElementById('btnTrack');
+  const stop=document.getElementById('btnStopTrack');
+  const status=document.getElementById('trackStatus');
+  if(btn) btn.disabled=geoTracking;
+  if(stop) stop.disabled=!geoTracking;
+  if(status){
+    status.textContent=geoTracking ? 'Localização ativa' : (lastLocation ? 'Localização pausada' : 'Localização não iniciada');
+    status.className='badge ' + (geoTracking?'ok':(lastLocation?'warn':'off'));
+  }
+}
+function iniciarLocalizacao(){
+  if(!('geolocation' in navigator)){
+    toast('Este celular/navegador não permite localização.',5000);
+    return;
+  }
+  if(!FIREBASE_DB){
+    toast('Firebase não configurado. Não dá para rastrear.',5000);
+    return;
+  }
+  if(geoWatchId!==null) navigator.geolocation.clearWatch(geoWatchId);
+  geoTracking=true;
+  updateTrackingUi();
+  toast('Solicitando permissão de localização...');
+  geoWatchId=navigator.geolocation.watchPosition(async pos=>{
+    try{
+      const payload=trackingPayloadFromPosition(pos);
+      await saveLocationFirebase(payload);
+      geoTracking=true;
+      updateTrackingUi();
+      toast('Localização enviada.',1400);
+    }catch(e){
+      console.warn('Falha ao salvar localização Firebase', e);
+      toast('Falha ao enviar localização: '+(e.message||e),4000);
+    }
+  }, err=>{
+    geoTracking=false;
+    updateTrackingUi();
+    const msg=err && err.code===1 ? 'Permissão de localização negada.' : 'Erro de localização: '+(err.message||err.code||'');
+    toast(msg,5000);
+  }, {enableHighAccuracy:true, maximumAge:5000, timeout:15000});
+}
+function pausarLocalizacao(){
+  if(geoWatchId!==null){
+    navigator.geolocation.clearWatch(geoWatchId);
+    geoWatchId=null;
+  }
+  geoTracking=false;
+  updateTrackingUi();
+  toast('Localização pausada.');
+}
+function finalizarRota(){
+  pausarLocalizacao();
+  if(FIREBASE_DB && rota){
+    fetch(FIREBASE_DB + '/vesco_motoristas_localizacao/' + encodeURIComponent(firebaseSafeId(rota)) + '/status.json', {
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({finalizada:true,finalizada_em:new Date().toISOString()})
+    }).catch(()=>{});
+  }
+  toast('Rota finalizada.');
+}
 
 
 async function saveDeliveryFirebase(id, payload){
@@ -254,7 +365,8 @@ async function saveDeliveryFirebase(id, payload){
     status_logistica:'Entregue',
     data_entrega_realizada:dataBR,
     entregue_em:new Date().toISOString(),
-    updated_at:new Date().toISOString()
+    updated_at:new Date().toISOString(),
+    localizacao_entrega:lastLocation || null
   });
   await fetch(FIREBASE_DB + '/vesco_rotas_motorista/' + encodeURIComponent(safeRota) + '/entregas/' + encodeURIComponent(safePedido) + '.json', {
     method:'PUT',
@@ -426,7 +538,7 @@ async function load(forceOnline=false){
   }
 }
 
-window.VescoMotorista={load,copyCurrentLink,debug:()=>({rota,token:token?'ok':'',offline:state.offline,state})};
+window.VescoMotorista={load,copyCurrentLink,iniciarLocalizacao,pausarLocalizacao,finalizarRota,debug:()=>({rota,token:token?'ok':'',offline:state.offline,geoTracking,lastLocation,state})};
 load();
 </script>
 </body>
