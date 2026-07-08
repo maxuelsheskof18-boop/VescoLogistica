@@ -1,4 +1,4 @@
-// vesco-firebase-realtime.js — VESCO CONTROL V10.1
+// vesco-firebase-realtime.js — VESCO CONTROL V10.2 FIREBASE FIRST
 // Sincroniza operadores em tempo real via Firebase Realtime Database.
 // Carregar depois de firebase-config.js e depois de modulo.vesco-v8-operacional.js.
 
@@ -64,7 +64,7 @@
 
     db = window.firebase.database(app);
     initialized = true;
-    console.log("VESCO Firebase V10 conectado:", cfg.databaseURL);
+    console.log("VESCO Firebase V10.2 conectado:", cfg.databaseURL);
     return db;
   }
 
@@ -327,7 +327,7 @@
       return saved;
     };
 
-    console.log("VESCO Firebase V10: métodos do painel sincronizados.");
+    console.log("VESCO Firebase V10.2: métodos do painel sincronizados.");
   }
 
   async function boot(){
@@ -355,5 +355,5 @@
     })
   };
 
-  boot().catch(e=>console.error("VESCO Firebase V10 erro:", e));
+  boot().catch(e=>console.error("VESCO Firebase V10.2 erro:", e));
 })();
