@@ -2492,3 +2492,60 @@ body.vesco-v9.v8-sidebar-collapsed .v105-menu-badge{
   border-radius:16px;
   background:#f8fbff;
 }
+
+
+/* ============================================================================
+   VESCO V10.10 — pings vermelhos no menu lateral e mobile
+   ============================================================================ */
+.v8-menu button,
+#v8MobileBar button{
+  position:relative !important;
+}
+
+.v8-menu button .v8-badge,
+#v8MobileBar button .v8-badge,
+.v110-menu-ping{
+  background:#ef4444 !important;
+  color:#fff !important;
+  min-width:22px !important;
+  height:22px !important;
+  padding:0 6px !important;
+  border-radius:999px !important;
+  display:grid;
+  place-items:center;
+  font-size:11px !important;
+  font-weight:1000 !important;
+  line-height:1 !important;
+  box-shadow:0 8px 20px rgba(239,68,68,.35), 0 0 0 3px rgba(239,68,68,.15);
+}
+
+body.v8-sidebar-collapsed .v8-menu button .v8-badge,
+body.v8-sidebar-collapsed .v8-menu button .v110-menu-ping{
+  position:absolute !important;
+  top:-5px !important;
+  right:-5px !important;
+  transform:none !important;
+  margin:0 !important;
+  border:2px solid #071426;
+  z-index:20;
+}
+
+body:not(.v8-sidebar-collapsed) .v8-menu button .v8-badge,
+body:not(.v8-sidebar-collapsed) .v8-menu button .v110-menu-ping{
+  margin-left:auto !important;
+}
+
+#v8MobileBar button .v8-badge,
+#v8MobileBar button .v110-menu-ping{
+  position:absolute !important;
+  top:2px !important;
+  right:8px !important;
+  transform:none !important;
+  border:2px solid #071426;
+  z-index:20;
+}
+
+.v8-menu button.has-v110-ping i,
+#v8MobileBar button.has-v110-ping i{
+  filter:drop-shadow(0 0 8px rgba(239,68,68,.55));
+}
