@@ -1,8 +1,8 @@
-// modulo.vesco-v8-operacional.js — V10.8 HOTFIX PERFORMANCE
+// modulo.vesco-v8-operacional.js — V10.9 DATA OPERACIONAL FIX
 // Correções: Flex sem ERP, logística sem entregues, faturamento mensal com seletor de mês, coordenadas sem inversão.
 
 (function(){
-  if (window.VescoV8 && window.VescoV8.__v108) return;
+  if (window.VescoV8 && window.VescoV8.__v109) return;
 
   const API_MAIN = window.VESCO_API_URL || "https://script.google.com/macros/s/AKfycbxEzbxBABMDwi7B7tn_1p-lC0vc50JjHFOrH3w42Oog2-5R2-WMYSrQ27ED7wduJUN6/exec";
   const API_FLEX = window.VESCO_API_FLEX_URL || "https://script.google.com/macros/s/AKfycbzDp2qs2S_MxDc_3afY1TurNKYEwfYKkk2cc4IliNxLiVaJuSKYyRqofOUMnhdFBjwNwg/exec";
@@ -163,7 +163,24 @@
     }
     return "—";
   }
-  function dueDate(o){ return parseISO(pick(o,["data_prevista_iso","data_prevista","dataPrevisao","data_previsao","data previsão","data_pedido","dataPedido","data","created_at","criado_em","data_criacao","data_emissao","data_entrega"])); }
+  function operationalDate(o){
+    // Data operacional: quando o pedido entrou/foi puxado para a fila.
+    // NÃO usa data_prev/data_prevista, porque isso é previsão de entrega.
+    return parseISO(pick(o,[
+      "data_operacional_iso","data_operacional","data_ped","dataPed",
+      "data_pedido","dataPedido","data pedido","data_emissao","dataEmissao",
+      "data_criacao","dataCriacao","created_at","criado_em","data"
+    ]));
+  }
+  function forecastDate(o){
+    // Data prevista de entrega. Serve para exibir, mas não para esconder pedido da separação.
+    return parseISO(pick(o,[
+      "data_prevista_iso","data_prevista","dataPrevista","data_previsao","dataPrevisao",
+      "data previsão","data_prev","dataPrev","previsao_entrega","previsaoEntrega","data_entrega"
+    ]));
+  }
+  function dueDate(o){ return forecastDate(o) || operationalDate(o); }
+  function pullDate(o){ return operationalDate(o) || parseISO(pick(o,["data_ped","data_pedido","dataPedido","created_at","criado_em","data"])) || ""; }
   function deliveryDate(o){ return parseISO(pick(o,["data_entregue_iso","data_entregue","entregue_em","finalizado_em","data_finalizado","data_entrega_realizada","concluido_em"])); }
   function sepDate(o){ return parseISO(pick(o,["data_separacao_iso","data_conclusao_separacao","dataSeparacao","data_separacao","separado_em","separado_data","data_separado","conclusao_separacao_em","fim_separacao_em","separacao_fim_em","hora_conclusao","status_atualizado_em","atualizado_em"])); }
   function value(o){ const v = pick(o,["valor_num","valor_total","valorPedido","valor_pedido","valor","total","total_pedido","preco_total","preco","valor_nf","valor_venda","receita"]); return parseMoney(v); }
@@ -212,6 +229,7 @@
     n.cliente_nome = client(n);
     n.endereco_completo = address(n);
     n.status_logistica = status(n);
+    n.data_operacional_iso = operationalDate(n);
     n.data_prevista_iso = dueDate(n);
     n.data_entregue_iso = deliveryDate(n);
     n.data_separacao_iso = sepDate(n);
@@ -455,7 +473,7 @@
   }
   function snapshotFromState(){
     return {
-      version:"V10.8",
+      version:"V10.9",
       date:state.date,
       month:state.month,
       updated_at:new Date().toISOString(),
@@ -518,14 +536,14 @@
   async function saveFirebaseSnapshot(snap){
     if(!snap) return;
     saveLocalSnapshot(snap);
-    try{ await firebasePut(firebaseCacheKey(), snap, 6500); }catch(e){ console.warn("V10.8: não salvou cache por data no Firebase.", e.message||e); }
-    try{ await firebasePut("vesco_cache/painel/latest", snap, 6500); }catch(e){ console.warn("V10.8: não salvou cache latest no Firebase.", e.message||e); }
+    try{ await firebasePut(firebaseCacheKey(), snap, 6500); }catch(e){ console.warn("V10.9: não salvou cache por data no Firebase.", e.message||e); }
+    try{ await firebasePut("vesco_cache/painel/latest", snap, 6500); }catch(e){ console.warn("V10.9: não salvou cache latest no Firebase.", e.message||e); }
   }
   async function firebasePatchOrder(id, patch){
     const payload=Object.assign({}, patch||{}, {updated_at:new Date().toISOString()});
     const key=firebaseSafeId(id);
     try{ await firebasePatch("vesco_operacao/orders/" + key, payload, 6500); }
-    catch(e){ console.warn("V10.8: patch Firebase falhou.", e.message||e); }
+    catch(e){ console.warn("V10.9: patch Firebase falhou.", e.message||e); }
     const all=[...(state.orders||[]),...(state.flex||[])];
     all.forEach(o=>{
       const vals=[orderKey(o),number(o),ecom(o),o.id,o.id_tiny,o.numero,o.numero_ecommerce,o.pedido_key].map(txt).filter(Boolean);
@@ -549,7 +567,7 @@
         gotAnything=true;
       }
     }catch(e){
-      console.warn("V10.8: Apps Script ERP lento/indisponível; Firebase mantém UI.", e.message);
+      console.warn("V10.9: Apps Script ERP lento/indisponível; Firebase mantém UI.", e.message);
     }
 
     try{
@@ -565,7 +583,7 @@
         saveStoredFlex(flex, state.month);
       }
     }catch(e){
-      console.warn("V10.8: Apps Script Flex lento/indisponível; Firebase mantém UI.", e.message);
+      console.warn("V10.9: Apps Script Flex lento/indisponível; Firebase mantém UI.", e.message);
     }
 
     try{
@@ -573,7 +591,7 @@
       rotas=extractArray(rp,["rotas","data","rows"]);
       if(rotas.length) gotAnything=true;
     }catch(e){
-      console.warn("V10.8: rotas Apps Script lento/indisponível; Firebase/local mantém UI.", e.message);
+      console.warn("V10.9: rotas Apps Script lento/indisponível; Firebase/local mantém UI.", e.message);
     }
 
     if(!gotAnything) return false;
@@ -606,7 +624,21 @@ async function loadData(force=false){
     state.loading=true;
     showLoading(true);
 
-    // V10.8: Firebase-first. A tela não fica presa esperando Apps Script.
+    // V10.9: botão Atualizar força Apps Script e regrava o cache,
+    // sem usar snapshot antigo do Firebase/localStorage.
+    if(force){
+      try{
+        await refreshFromAppsScriptBackground();
+      }catch(e){
+        console.warn("V10.9: atualização forçada falhou.", e);
+      }
+      state.loading=false;
+      showLoading(false);
+      try{ render(); }catch(e){}
+      return;
+    }
+
+    // V10.9: Firebase-first. A tela não fica presa esperando Apps Script.
     let quickLoaded=false;
 
     const snapFb=await loadFirebaseSnapshot();
@@ -638,8 +670,13 @@ async function loadData(force=false){
 
   function showLoading(show){ let el=document.getElementById("v8Loading"); if(!el){el=document.createElement("div"); el.id="v8Loading"; el.className="v8-loading"; el.innerHTML="<div>Carregando dados...</div>"; document.body.appendChild(el);} el.style.display=show?"grid":"none"; }
 
-  function untilDate(o){ const d=dueDate(o); return !d || d<=state.date; }
-  function inMonth(o){ return (dueDate(o)||"").slice(0,7)===state.month; }
+  function untilDate(o){
+    // Usa data operacional/data do pedido para decidir se entra na fila.
+    // Previsão de entrega futura não pode esconder pedido que já entrou hoje.
+    const d=pullDate(o);
+    return !d || d<=state.date;
+  }
+  function inMonth(o){ return (pullDate(o)||dueDate(o)||"").slice(0,7)===state.month; }
   function logisticaList(){ return dedup(state.orders).filter(o=>!o.is_delivered && !o.is_retirada && o.has_address && untilDate(o)); }
   function flexList(){
     // V8.7: Flex da operação vem somente da API Flex atual.
@@ -1127,11 +1164,20 @@ function layout(){
   function separacaoList(){
     return dedup(state.orders)
       .filter(o=>!o.is_flex)
-      .filter(o=>!o.is_delivered)
+      .filter(o=>!isDelivered(o))
       .filter(untilDate)
       .filter(o=>{
         const s=norm(statusAll(o));
-        return !s || s.includes("a separar") || s.includes("em separacao") || s.includes("em separação") || s.includes("pendente") || s.includes("em aberto") || s==="aberto" || s.includes(" aberto");
+        // Em aberto é pedido que ainda precisa entrar no fluxo de separação.
+        // Não usa data prevista de entrega para ocultar.
+        return !s ||
+          s.includes("a separar") ||
+          s.includes("em separacao") ||
+          s.includes("em separação") ||
+          s.includes("pendente") ||
+          s.includes("em aberto") ||
+          s==="aberto" ||
+          s.includes(" aberto");
       });
   }
 
@@ -1419,7 +1465,7 @@ function fastRouteLink(rota, opts={}){
       url.searchParams.set("store","firebase");
     }
 
-    // V10.8: SEMPRE leva data como fallback.
+    // V10.9: SEMPRE leva data como fallback.
     // Mesmo com Firebase, se o banco estiver vazio ou a gravação falhar, o motorista abre a rota.
     const data=encodeRoutePayload(routeOfflinePayload(rota));
     if(data) url.searchParams.set("data", data);
@@ -1507,7 +1553,7 @@ function fastRouteLink(rota, opts={}){
         const found=orderByAnyKey(key) || orderByRouteStop(stop);
         let order=found || fallbackOrderFromStop(Object.assign({}, stop||{}, {pedido:key}), r);
 
-        // V10.8: aplica entregas salvas no Firebase dentro da própria rota.
+        // V10.9: aplica entregas salvas no Firebase dentro da própria rota.
         const entregas=r.entregas || {};
         const possibleKeys=[key, number(order), orderKey(order), ecom(order), stop?.pedido, stop?.numero, stop?.id, stop?.ecom]
           .map(txt).filter(Boolean);
@@ -1583,7 +1629,7 @@ function fastRouteLink(rota, opts={}){
       if(renderDom && document.getElementById("v106MotoristasAoVivo")) renderMotoristasAoVivoIntoDom();
       return state.motoristasLocalizacao;
     }catch(e){
-      console.warn("V10.8: localização motorista indisponível.", e.message||e);
+      console.warn("V10.9: localização motorista indisponível.", e.message||e);
       return state.motoristasLocalizacao||{};
     }
   }
@@ -1643,7 +1689,7 @@ function fastRouteLink(rota, opts={}){
           </div>
         </div>`;
       }catch(e){
-        console.warn("V10.8: falha ao renderizar card do motorista; card ignorado.", e);
+        console.warn("V10.9: falha ao renderizar card do motorista; card ignorado.", e);
         return "";
       }
     }).join("")}</div>`;
@@ -1653,7 +1699,7 @@ function fastRouteLink(rota, opts={}){
     try{
       return renderMotoristasAoVivo();
     }catch(e){
-      console.warn("V10.8: Motoristas ao vivo não bloqueou o painel.", e);
+      console.warn("V10.9: Motoristas ao vivo não bloqueou o painel.", e);
       return `<div class="v8-empty"><b>Rastreamento aguardando localização.</b><br><small>O painel continua funcionando normalmente.</small></div>`;
     }
   }
@@ -1975,7 +2021,7 @@ function fastRouteLink(rota, opts={}){
     const link=await linkForRoute(rota);
     await openShareRouteModal(rota,link);
     const ok=await copyRouteLink(link);
-    if(ok) console.log("V10.8: link copiado automaticamente.");
+    if(ok) console.log("V10.9: link copiado automaticamente.");
   }
 
 
@@ -2168,7 +2214,7 @@ function fastRouteLink(rota, opts={}){
     }
   }
   async function updateStatus(id,statusNovo){
-    // V10.8: status instantâneo no Firebase com operador e horário real de separação.
+    // V10.9: status instantâneo no Firebase com operador e horário real de separação.
     try{
       const op=operadorAtual(true);
       const nowISO=new Date().toISOString();
@@ -2715,7 +2761,7 @@ function render(){
       if(state.tab==="saiu") return renderProntoEnvio();
       return renderDashboard();
     }catch(e){
-      console.error("V10.8: render seguro capturou erro.", e);
+      console.error("V10.9: render seguro capturou erro.", e);
       showLoading(false);
       const el=document.getElementById("v8Content");
       if(el) el.innerHTML=`<div class="v8-card"><h3>Erro de tela contornado</h3><p>O painel não travou. Clique em Atualizar ou mude de aba.</p><small>${esc(e.message||e)}</small></div>`;
@@ -2785,7 +2831,7 @@ function render(){
   async function go(tab){ state.tab=tab; await ensureData(); render(); }
   function interceptOldClicks(){ document.addEventListener("click",e=>{ const btn=e.target.closest?.("[data-v7tab], [data-v8tab], #v7Sidebar button, .tab-nav button"); if(!btn)return; const label=norm(btn.dataset.v7tab||btn.dataset.v8tab||btn.textContent||""); const map={"dashboard":"dashboard","separacao":"separacao","separados hoje":"separados","separados":"separados","logistica":"logistica","logistica erp":"logistica","logística":"logistica","pronto para envio":"saiu","retiradas":"retiradas","tarefas frota":"tarefas","tarefas":"tarefas","frota":"tarefas","envios flex":"flex","flex":"flex","entregues":"entregues"}; const tab=map[label]||(label.includes("separados")?"separados":label.includes("log")?"logistica":label.includes("flex")?"flex":""); if(tab){e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); go(tab);}},true); }
   async function init(){ state.tarefas=loadTarefas(); autoCleanFlexStorageV87(); layout(); interceptOldClicks(); window.focusOrderOnMap=id=>focus("logistica",id); window.focusFlexOnMap=id=>focus("flex",id); await loadData(true); render(); }
-  window.VescoV8={__v82:true,__v821:true,__v84:true,__v86:true,__v861:true,__v87:true,__v871:true,__v872:true,__v873:true,__v874:true,__v875:true,__v876:true,__v90:true,__v91:true,__v92:true,__v921:true,__v922:true,__v93:true,__v94:true,__v95:true,__v100:true,__v101:true,__v102:true,__v103:true,__v104:true,__v105:true,__v106:true,__v107:true,__v108:true,state,init,go,
+  window.VescoV8={__v82:true,__v821:true,__v84:true,__v86:true,__v861:true,__v87:true,__v871:true,__v872:true,__v873:true,__v874:true,__v875:true,__v876:true,__v90:true,__v91:true,__v92:true,__v921:true,__v922:true,__v93:true,__v94:true,__v95:true,__v100:true,__v101:true,__v102:true,__v103:true,__v104:true,__v105:true,__v106:true,__v107:true,__v108:true,__v109:true,state,init,go,
     openFlexMonth:async(month)=>{state.month=month||state.month; const m=document.getElementById("v8Month"); if(m)m.value=state.month; await loadData(true); renderFlex();},
     saveFlexMonthNow:()=>{const saved=saveStoredFlex(flexList(),state.month); alert(saved.saved?`Mês armazenado: ${monthLabel(saved.month)} — ${saved.total} pedido(s).`:`Nada novo para armazenar em ${monthLabel(saved.month)}.`); renderFlex(); return saved;},
     refreshFlexOnly:async()=>{await loadData(true); saveStoredFlex(state.flex,state.month); renderFlex();},
@@ -2797,7 +2843,7 @@ function render(){
     runFlexGeocode,statusFlexGeocode,autoGeocodeMap,geocodeAddressViaFlexApi,openMapForOrder,openGoogleMapsForList,googleMapsDirectionsUrlFromOrders,
     renderTarefasFrota,registrarTarefaFrota,concluirTarefaFrota,removerTarefaFrota,tarefasFrotaList,
     sidebar:()=>{state.sidebarCollapsed=!state.sidebarCollapsed; document.body.classList.toggle("v8-sidebar-collapsed",state.sidebarCollapsed); localStorage.setItem("vesco:v8:sidebarCollapsed",state.sidebarCollapsed?"1":"0");},
-    today:async()=>{state.date=todayISO(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; await loadData(true); render();},refresh:async()=>{await loadData(true); render();},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,definirOperador,operadorAtual,produtosText,pagamentoText,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{version:"V10.8",date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
+    today:async()=>{state.date=todayISO(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; await loadData(true); render();},refresh:async()=>{await loadData(true); render();},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,definirOperador,operadorAtual,produtosText,pagamentoText,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{version:"V10.9",date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",init); else init();
-  console.log("VESCO V10.8 ativo — hotfix travamento, motoristas ao vivo seguro e UI mais leve.");
+  console.log("VESCO V10.9 ativo — separação por data do pedido, não por previsão de entrega.");
 })();
