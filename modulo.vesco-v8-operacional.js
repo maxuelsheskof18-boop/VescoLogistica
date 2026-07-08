@@ -1,8 +1,8 @@
-// modulo.vesco-v8-operacional.js — V10.6 RASTREAMENTO MOTORISTA
+// modulo.vesco-v8-operacional.js — V10.7 ENTREGA FIREBASE FIX
 // Correções: Flex sem ERP, logística sem entregues, faturamento mensal com seletor de mês, coordenadas sem inversão.
 
 (function(){
-  if (window.VescoV8 && window.VescoV8.__v106) return;
+  if (window.VescoV8 && window.VescoV8.__v107) return;
 
   const API_MAIN = window.VESCO_API_URL || "https://script.google.com/macros/s/AKfycbxEzbxBABMDwi7B7tn_1p-lC0vc50JjHFOrH3w42Oog2-5R2-WMYSrQ27ED7wduJUN6/exec";
   const API_FLEX = window.VESCO_API_FLEX_URL || "https://script.google.com/macros/s/AKfycbzDp2qs2S_MxDc_3afY1TurNKYEwfYKkk2cc4IliNxLiVaJuSKYyRqofOUMnhdFBjwNwg/exec";
@@ -455,7 +455,7 @@
   }
   function snapshotFromState(){
     return {
-      version:"V10.6",
+      version:"V10.7",
       date:state.date,
       month:state.month,
       updated_at:new Date().toISOString(),
@@ -518,14 +518,14 @@
   async function saveFirebaseSnapshot(snap){
     if(!snap) return;
     saveLocalSnapshot(snap);
-    try{ await firebasePut(firebaseCacheKey(), snap, 6500); }catch(e){ console.warn("V10.6: não salvou cache por data no Firebase.", e.message||e); }
-    try{ await firebasePut("vesco_cache/painel/latest", snap, 6500); }catch(e){ console.warn("V10.6: não salvou cache latest no Firebase.", e.message||e); }
+    try{ await firebasePut(firebaseCacheKey(), snap, 6500); }catch(e){ console.warn("V10.7: não salvou cache por data no Firebase.", e.message||e); }
+    try{ await firebasePut("vesco_cache/painel/latest", snap, 6500); }catch(e){ console.warn("V10.7: não salvou cache latest no Firebase.", e.message||e); }
   }
   async function firebasePatchOrder(id, patch){
     const payload=Object.assign({}, patch||{}, {updated_at:new Date().toISOString()});
     const key=firebaseSafeId(id);
     try{ await firebasePatch("vesco_operacao/orders/" + key, payload, 6500); }
-    catch(e){ console.warn("V10.6: patch Firebase falhou.", e.message||e); }
+    catch(e){ console.warn("V10.7: patch Firebase falhou.", e.message||e); }
     const all=[...(state.orders||[]),...(state.flex||[])];
     all.forEach(o=>{
       const vals=[orderKey(o),number(o),ecom(o),o.id,o.id_tiny,o.numero,o.numero_ecommerce,o.pedido_key].map(txt).filter(Boolean);
@@ -549,7 +549,7 @@
         gotAnything=true;
       }
     }catch(e){
-      console.warn("V10.6: Apps Script ERP lento/indisponível; Firebase mantém UI.", e.message);
+      console.warn("V10.7: Apps Script ERP lento/indisponível; Firebase mantém UI.", e.message);
     }
 
     try{
@@ -565,7 +565,7 @@
         saveStoredFlex(flex, state.month);
       }
     }catch(e){
-      console.warn("V10.6: Apps Script Flex lento/indisponível; Firebase mantém UI.", e.message);
+      console.warn("V10.7: Apps Script Flex lento/indisponível; Firebase mantém UI.", e.message);
     }
 
     try{
@@ -573,7 +573,7 @@
       rotas=extractArray(rp,["rotas","data","rows"]);
       if(rotas.length) gotAnything=true;
     }catch(e){
-      console.warn("V10.6: rotas Apps Script lento/indisponível; Firebase/local mantém UI.", e.message);
+      console.warn("V10.7: rotas Apps Script lento/indisponível; Firebase/local mantém UI.", e.message);
     }
 
     if(!gotAnything) return false;
@@ -606,7 +606,7 @@ async function loadData(force=false){
     state.loading=true;
     showLoading(true);
 
-    // V10.6: Firebase-first. A tela não fica presa esperando Apps Script.
+    // V10.7: Firebase-first. A tela não fica presa esperando Apps Script.
     let quickLoaded=false;
 
     const snapFb=await loadFirebaseSnapshot();
@@ -657,11 +657,22 @@ async function loadData(force=false){
 
   function retiradaList(){ return dedup(state.orders).filter(o=>!o.is_delivered && (o.is_retirada || !o.has_address) && untilDate(o)); }
   function entreguesList(){
-    // Entregues só com data real de entrega no dia selecionado.
-    return dedup(state.orders)
+    // Entregues do ERP + entregas confirmadas nas rotas/Firebase no dia selecionado.
+    const erp=dedup(state.orders)
       .filter(o=>!o.is_flex)
-      .filter(o=>o.is_delivered)
+      .filter(o=>isDelivered(o))
       .filter(o=>deliveryDate(o)===state.date);
+
+    const rotas=routeOrdersRows()
+      .map(row=>Object.assign({}, row.order, {
+        __rota_id:row.rota_id,
+        __rota_nome:row.nome_rota,
+        __rota_motorista:row.motorista
+      }))
+      .filter(o=>isDelivered(o))
+      .filter(o=>deliveryDate(o)===state.date);
+
+    return dedup(erp.concat(rotas));
   }
 
   function separadosList(){
@@ -1120,7 +1131,7 @@ function layout(){
       .filter(untilDate)
       .filter(o=>{
         const s=norm(statusAll(o));
-        return !s || s.includes("a separar") || s.includes("em separacao") || s.includes("em separação") || s.includes("pendente");
+        return !s || s.includes("a separar") || s.includes("em separacao") || s.includes("em separação") || s.includes("pendente") || s.includes("em aberto") || s==="aberto" || s.includes(" aberto");
       });
   }
 
@@ -1408,7 +1419,7 @@ function fastRouteLink(rota, opts={}){
       url.searchParams.set("store","firebase");
     }
 
-    // V10.6: SEMPRE leva data como fallback.
+    // V10.7: SEMPRE leva data como fallback.
     // Mesmo com Firebase, se o banco estiver vazio ou a gravação falhar, o motorista abre a rota.
     const data=encodeRoutePayload(routeOfflinePayload(rota));
     if(data) url.searchParams.set("data", data);
@@ -1494,7 +1505,24 @@ function fastRouteLink(rota, opts={}){
       stops.forEach((stop,idx)=>{
         const key=txt(stop && (stop.pedido || stop.numero || stop.id || stop.pedido_id || stop.ecom || stop.numero_ecommerce)) || txt(ids[idx] || "");
         const found=orderByAnyKey(key) || orderByRouteStop(stop);
-        const order=found || fallbackOrderFromStop(Object.assign({}, stop||{}, {pedido:key}), r);
+        let order=found || fallbackOrderFromStop(Object.assign({}, stop||{}, {pedido:key}), r);
+
+        // V10.7: aplica entregas salvas no Firebase dentro da própria rota.
+        const entregas=r.entregas || {};
+        const possibleKeys=[key, number(order), orderKey(order), ecom(order), stop?.pedido, stop?.numero, stop?.id, stop?.ecom]
+          .map(txt).filter(Boolean);
+        const entregaKey=Object.keys(entregas).find(k=>possibleKeys.some(v=>k===v || k===firebaseSafeId(v) || firebaseSafeId(k)===firebaseSafeId(v)));
+        if(entregaKey){
+          const ent=entregas[entregaKey] || {};
+          order=Object.assign({}, order, ent, {
+            status_logistica:"Entregue",
+            situacao_nome:"Entregue",
+            is_delivered:true,
+            data_entrega_realizada:ent.data_entrega_realizada || parseISO(ent.entregue_em) || state.date,
+            entregue_em:ent.entregue_em || ent.updated_at || new Date().toISOString()
+          });
+        }
+
         rows.push({
           rota:r,
           rota_id:rid,
@@ -1555,7 +1583,7 @@ function fastRouteLink(rota, opts={}){
       if(renderDom) renderMotoristasAoVivoIntoDom();
       return state.motoristasLocalizacao;
     }catch(e){
-      console.warn("V10.6: localização motorista indisponível.", e.message||e);
+      console.warn("V10.7: localização motorista indisponível.", e.message||e);
       return state.motoristasLocalizacao||{};
     }
   }
@@ -1672,36 +1700,85 @@ function fastRouteLink(rota, opts={}){
   }
 
   async function confirmarEntregaRotaSite(rotaId,token,pedido){
-    const row=routeOrdersRows().find(r=>txt(r.rota_id)===txt(rotaId) && (txt(r.key)===txt(pedido) || txt(number(r.order))===txt(pedido) || txt(orderKey(r.order))===txt(pedido)));
+    const row=routeOrdersRows().find(r=>txt(r.rota_id)===txt(rotaId) && (
+      txt(r.key)===txt(pedido) || txt(number(r.order))===txt(pedido) || txt(orderKey(r.order))===txt(pedido) || txt(ecom(r.order))===txt(pedido)
+    ));
     const o=row && row.order;
     const numero=number(o)||pedido;
     const recebedor=prompt(`Quem recebeu o pedido #${numero}?`);
-    if(!txt(recebedor)) return;
+    if(!txt(recebedor)) return null;
     const documento=prompt("Documento/observação de quem recebeu:") || "";
     const observacao=prompt("Observação da entrega:", "Confirmado pelo painel Vesco") || "Confirmado pelo painel Vesco";
 
+    const nowISO=new Date().toISOString();
+    const dataBR=new Date().toLocaleDateString("pt-BR");
+    const patch={
+      pedido:pedido,
+      recebedor,
+      documento,
+      transportador:"Painel Vesco",
+      observacao,
+      status_logistica:"Entregue",
+      situacao_nome:"Entregue",
+      is_delivered:true,
+      data_entrega_realizada:dataBR,
+      entregue_em:nowISO,
+      updated_at:nowISO
+    };
+
     try{
       showLoading(true);
-      const resp=await jsonp(API_MAIN,{
+
+      const rota=(state.rotas||[]).find(r=>routeId(r)===txt(rotaId));
+      const keysEntrega=[pedido, numero, orderKey(o), number(o), ecom(o), row?.key]
+        .map(txt).filter(Boolean);
+      const mainKey=keysEntrega[0] || ("pedido-" + Date.now());
+
+      // Salva entrega na rota no Firebase.
+      if(firebaseEnabled()){
+        await firebasePut(`vesco_rotas_motorista/${firebaseSafeId(rotaId)}/entregas/${firebaseSafeId(mainKey)}`, patch, 6500);
+
+        // Salva patch em todos os identificadores possíveis do pedido.
+        for(const k of [...new Set(keysEntrega)]){
+          await firebasePatch(`vesco_operacao/orders/${firebaseSafeId(k)}`, patch, 6500).catch(()=>{});
+        }
+      }
+
+      // Atualiza estado local imediatamente.
+      if(rota){
+        rota.entregas=rota.entregas||{};
+        rota.entregas[firebaseSafeId(mainKey)]=patch;
+        saveLocalRota(rota);
+      }
+      const all=[...(state.orders||[]),...(state.flex||[])];
+      all.forEach(item=>{
+        const vals=[orderKey(item),number(item),ecom(item),item.id,item.id_tiny,item.numero,item.numero_ecommerce,item.pedido_key].map(txt).filter(Boolean);
+        if(vals.some(v=>keysEntrega.includes(v) || keysEntrega.map(firebaseSafeId).includes(firebaseSafeId(v)))) Object.assign(item,patch);
+      });
+
+      showLoading(false);
+      renderProntoEnvio();
+
+      // Apps Script em segundo plano, sem travar e sem alertar pedido_nao_encontrado.
+      jsonp(API_MAIN,{
         action:"confirmarEntregaMotorista",
         rota:rotaId,
         rota_id:rotaId,
         token,
-        pedido,
+        pedido:mainKey,
         recebedor,
         documento,
         transportador:"Painel Vesco",
         observacao
-      },30000);
-      showLoading(false);
-      if(!resp || resp.success===false) throw new Error(resp && resp.error ? resp.error : "Não foi possível confirmar entrega.");
-      await loadData(true);
-      renderProntoEnvio();
-      alert("Entrega confirmada com sucesso.");
-      return resp;
+      },12000).then(resp=>{
+        if(resp && resp.success===false) console.warn("Apps Script não confirmou entrega, mas Firebase confirmou.", resp);
+      }).catch(e=>console.warn("Apps Script entrega indisponível; Firebase manteve confirmação.", e.message||e));
+
+      alert("Entrega confirmada no Firebase.");
+      return {success:true,firebase:true,patch};
     }catch(e){
       showLoading(false);
-      alert("Erro ao confirmar entrega: " + (e.message || e));
+      alert("Erro ao confirmar entrega no Firebase: " + (e.message || e));
       return null;
     }
   }
@@ -1884,7 +1961,7 @@ function fastRouteLink(rota, opts={}){
     const link=await linkForRoute(rota);
     await openShareRouteModal(rota,link);
     const ok=await copyRouteLink(link);
-    if(ok) console.log("V10.6: link copiado automaticamente.");
+    if(ok) console.log("V10.7: link copiado automaticamente.");
   }
 
 
@@ -2077,7 +2154,7 @@ function fastRouteLink(rota, opts={}){
     }
   }
   async function updateStatus(id,statusNovo){
-    // V10.6: status instantâneo no Firebase com operador e horário real de separação.
+    // V10.7: status instantâneo no Firebase com operador e horário real de separação.
     try{
       const op=operadorAtual(true);
       const nowISO=new Date().toISOString();
@@ -2626,16 +2703,17 @@ function render(){
 
   function updateBadges(){
     function setTabBadge(tab,count){
-      const btn=document.querySelector(`#v8Sidebar [data-tab="${tab}"]`);
-      if(!btn) return;
-      let b=btn.querySelector(".v105-menu-badge");
-      if(!b){
-        b=document.createElement("b");
-        b.className="v105-menu-badge";
-        btn.appendChild(b);
-      }
-      b.textContent=String(count);
-      b.style.display=count>0?"inline-grid":"none";
+      document.querySelectorAll(`[data-tab="${tab}"]`).forEach(btn=>{
+        let b=btn.querySelector(".v105-menu-badge");
+        if(!b){
+          b=document.createElement("b");
+          b.className="v105-menu-badge";
+          btn.appendChild(b);
+        }
+        b.textContent=String(count);
+        b.style.display=count>0?"inline-grid":"none";
+        btn.classList.toggle("has-v105-badge", count>0);
+      });
     }
     setTabBadge("separacao", separacaoList().length + pendenciasProdutoList().length);
     setTabBadge("saiu", prontoList().length + routeFlexExtras().length);
@@ -2644,6 +2722,7 @@ function render(){
     setTabBadge("tarefas", tarefasFrotaList().filter(t=>t.status!=="Concluída").length);
     setTabBadge("flex", flexList().length);
     setTabBadge("separados", separadosList().length);
+    setTabBadge("entregues", entreguesList().length);
     const b=document.getElementById("v8RetBadge"); if(b) b.textContent=String(retiradaList().length);
   }
   function closeMaps(){ Object.keys(state.maps).forEach(k=>{ try{state.maps[k].remove()}catch(e){} }); state.maps={}; state.layers={}; state.markers={logistica:{},flex:{}}; }
@@ -2685,7 +2764,7 @@ function render(){
   async function go(tab){ state.tab=tab; await ensureData(); render(); }
   function interceptOldClicks(){ document.addEventListener("click",e=>{ const btn=e.target.closest?.("[data-v7tab], [data-v8tab], #v7Sidebar button, .tab-nav button"); if(!btn)return; const label=norm(btn.dataset.v7tab||btn.dataset.v8tab||btn.textContent||""); const map={"dashboard":"dashboard","separacao":"separacao","separados hoje":"separados","separados":"separados","logistica":"logistica","logistica erp":"logistica","logística":"logistica","pronto para envio":"saiu","retiradas":"retiradas","tarefas frota":"tarefas","tarefas":"tarefas","frota":"tarefas","envios flex":"flex","flex":"flex","entregues":"entregues"}; const tab=map[label]||(label.includes("separados")?"separados":label.includes("log")?"logistica":label.includes("flex")?"flex":""); if(tab){e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); go(tab);}},true); }
   async function init(){ state.tarefas=loadTarefas(); autoCleanFlexStorageV87(); layout(); interceptOldClicks(); window.focusOrderOnMap=id=>focus("logistica",id); window.focusFlexOnMap=id=>focus("flex",id); await loadData(true); render(); }
-  window.VescoV8={__v82:true,__v821:true,__v84:true,__v86:true,__v861:true,__v87:true,__v871:true,__v872:true,__v873:true,__v874:true,__v875:true,__v876:true,__v90:true,__v91:true,__v92:true,__v921:true,__v922:true,__v93:true,__v94:true,__v95:true,__v100:true,__v101:true,__v102:true,__v103:true,__v104:true,__v105:true,__v106:true,state,init,go,
+  window.VescoV8={__v82:true,__v821:true,__v84:true,__v86:true,__v861:true,__v87:true,__v871:true,__v872:true,__v873:true,__v874:true,__v875:true,__v876:true,__v90:true,__v91:true,__v92:true,__v921:true,__v922:true,__v93:true,__v94:true,__v95:true,__v100:true,__v101:true,__v102:true,__v103:true,__v104:true,__v105:true,__v106:true,__v107:true,state,init,go,
     openFlexMonth:async(month)=>{state.month=month||state.month; const m=document.getElementById("v8Month"); if(m)m.value=state.month; await loadData(true); renderFlex();},
     saveFlexMonthNow:()=>{const saved=saveStoredFlex(flexList(),state.month); alert(saved.saved?`Mês armazenado: ${monthLabel(saved.month)} — ${saved.total} pedido(s).`:`Nada novo para armazenar em ${monthLabel(saved.month)}.`); renderFlex(); return saved;},
     refreshFlexOnly:async()=>{await loadData(true); saveStoredFlex(state.flex,state.month); renderFlex();},
@@ -2697,7 +2776,7 @@ function render(){
     runFlexGeocode,statusFlexGeocode,autoGeocodeMap,geocodeAddressViaFlexApi,openMapForOrder,openGoogleMapsForList,googleMapsDirectionsUrlFromOrders,
     renderTarefasFrota,registrarTarefaFrota,concluirTarefaFrota,removerTarefaFrota,tarefasFrotaList,
     sidebar:()=>{state.sidebarCollapsed=!state.sidebarCollapsed; document.body.classList.toggle("v8-sidebar-collapsed",state.sidebarCollapsed); localStorage.setItem("vesco:v8:sidebarCollapsed",state.sidebarCollapsed?"1":"0");},
-    today:async()=>{state.date=todayISO(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; await loadData(true); render();},refresh:async()=>{await loadData(true); render();},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,definirOperador,operadorAtual,produtosText,pagamentoText,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{version:"V10.6",date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
+    today:async()=>{state.date=todayISO(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; await loadData(true); render();},refresh:async()=>{await loadData(true); render();},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,definirOperador,operadorAtual,produtosText,pagamentoText,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{version:"V10.7",date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",init); else init();
-  console.log("VESCO V10.6 ativo — rastreamento do motorista em tempo real via Firebase.");
+  console.log("VESCO V10.7 ativo — entregas Firebase-first, separados e badges corrigidos.");
 })();
