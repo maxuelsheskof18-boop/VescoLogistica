@@ -1,3 +1,19 @@
+
+// V56: ignora resposta JSONP atrasada do Apps Script antigo sem quebrar o painel.
+(function(){
+  if (window.__vescoJsonpLateSafeV56) return;
+  window.__vescoJsonpLateSafeV56 = true;
+  window.addEventListener('error', function(ev){
+    const msg = String((ev && ev.message) || '');
+    const src = String((ev && ev.filename) || '');
+    if (msg.indexOf('__jsonp_cb_') >= 0 && msg.indexOf('is not defined') >= 0) {
+      try { ev.preventDefault(); } catch(e) {}
+      try { console.warn('V56: resposta JSONP atrasada ignorada com segurança.', msg, src); } catch(e) {}
+      return true;
+    }
+  }, true);
+})();
+
 // app.js — Versão corrigida: Mapas sincronizados, sem pins duplicados e foco preciso
 // Observações: coloque este arquivo no lugar do app.js atual e recarregue o servidor.
 
@@ -635,46 +651,102 @@ function createPinSVG(color='#eab308', size=28){
 function jsonpFetch(url, cb) {
   const cbName = '__jsonp_cb_' + Math.random().toString(36).substr(2,9);
   const script = document.createElement('script');
+  let finished = false;
+
+  function keepLateCallbackSafe() {
+    // Apps Script pode responder depois do timeout. Se apagarmos o callback,
+    // a resposta atrasada gera: ReferenceError: __jsonp_cb_xxx is not defined.
+    window[cbName] = function(){};
+    setTimeout(() => {
+      try { delete window[cbName]; } catch(e) { try { window[cbName] = undefined; } catch(_e){} }
+    }, 120000);
+  }
+
+  function removeScript() {
+    try { script.onload = null; script.onerror = null; } catch(e){}
+    try { if (script.parentNode) script.remove(); } catch(e){}
+  }
+
   const timeout = setTimeout(() => {
-     try { delete window[cbName]; } catch(e){}
-     if (script.parentNode) script.remove();
+     if (finished) return;
+     finished = true;
+     removeScript();
+     keepLateCallbackSafe();
      if (typeof cb === 'function') cb(new Error("Timeout"), null);
-  }, 15000);
+  }, 45000);
+
   window[cbName] = function(res) {
+    if (finished) return;
+    finished = true;
     clearTimeout(timeout);
+    removeScript();
+    try { delete window[cbName]; } catch(e) { try { window[cbName] = undefined; } catch(_e){} }
     try { if (typeof cb === 'function') cb(null, res); } catch(e){ console.error(e); }
-    try { delete window[cbName]; } catch(e){}
-    if (script.parentNode) script.remove();
   };
+
+  script.onerror = function() {
+    if (finished) return;
+    finished = true;
+    clearTimeout(timeout);
+    removeScript();
+    keepLateCallbackSafe();
+    if (typeof cb === 'function') cb(new Error("JSONP script error"), null);
+  };
+
   const sep = url.indexOf('?') === -1 ? '?' : '&';
   script.src = `${url}${sep}callback=${cbName}`;
   script.id = cbName;
+  script.async = true;
   document.head.appendChild(script);
 }
-function jsonpFetchPromise(url, timeoutMs = 15000) {
+function jsonpFetchPromise(url, timeoutMs = 45000) {
   return new Promise((resolve, reject) => {
     const cbName = '__jsonp_cb_' + Math.random().toString(36).substr(2,9);
     const script = document.createElement('script');
     let timer = null;
-    function cleanup() {
-      if (timer) clearTimeout(timer);
-      try { delete window[cbName]; } catch(e){}
-      if (script.parentNode) script.remove();
+    let finished = false;
+
+    function keepLateCallbackSafe() {
+      window[cbName] = function(){};
+      setTimeout(() => {
+        try { delete window[cbName]; } catch(e) { try { window[cbName] = undefined; } catch(_e){} }
+      }, 120000);
     }
+
+    function cleanup(mode) {
+      if (timer) clearTimeout(timer);
+      try { script.onload = null; script.onerror = null; } catch(e){}
+      try { if (script.parentNode) script.remove(); } catch(e){}
+      if (mode === 'late-safe') keepLateCallbackSafe();
+      else {
+        try { delete window[cbName]; } catch(e) { try { window[cbName] = undefined; } catch(_e){} }
+      }
+    }
+
     window[cbName] = function(res){
-      cleanup();
+      if (finished) return;
+      finished = true;
+      cleanup('normal');
       resolve({ jsonp: true, resp: res });
     };
+
     script.onerror = function(ev){
-      cleanup();
+      if (finished) return;
+      finished = true;
+      cleanup('late-safe');
       reject(new Error('JSONP script error'));
     };
+
     timer = setTimeout(() => {
-      cleanup();
+      if (finished) return;
+      finished = true;
+      cleanup('late-safe');
       reject(new Error('JSONP timeout'));
     }, timeoutMs);
+
     const sep = url.indexOf('?') === -1 ? '?' : '&';
     script.src = `${url}${sep}callback=${cbName}`;
+    script.async = true;
     document.head.appendChild(script);
   });
 }
@@ -12150,3 +12222,12 @@ console.log("🚀 Camada de Resiliência Logística Injetada: CORS/429 mitigados
 
   console.log('V42 ativo — Logística limpa: forma de envio aparece uma vez; ID 0/sem ID = Não definida; dados originais preservados em Detalhes.');
 })();
+
+
+
+/* ============================================================================
+   VESCO APP.JS HOTFIX V56 — JSONP callback atrasado protegido
+   Corrige: Uncaught ReferenceError: __jsonp_cb_... is not defined
+   ============================================================================ */
+
+console.log('VESCO app.js V56 ativo — JSONP atrasado protegido.');
