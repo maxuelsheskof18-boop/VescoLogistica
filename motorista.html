@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Vesco Motorista</title>
+  <title>Vesco Motorista V9.5</title>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <style>
@@ -51,6 +51,8 @@ const API=qs.get('api') || window.VESCO_API_URL || 'https://script.google.com/ma
 const rota=qs.get('rota') || qs.get('route') || '';
 const token=qs.get('token') || '';
 const packedData=qs.get('data') || '';
+const STORE=qs.get('store') || '';
+const FIREBASE_DB=(qs.get('fb') || window.VESCO_FIREBASE_DATABASE_URL || '').replace(/\/+$/,'');
 
 let state={rota:null,pedidos:[],offline:false,apiError:''};
 
@@ -98,6 +100,34 @@ function normalizeOfflinePayload(d){
     },
     pedidos
   };
+}
+
+
+function firebaseSafeId(id){ return txt(id).replace(/[.#$/\[\]]/g,'_'); }
+async function loadFirebaseRoute(){
+  if(!FIREBASE_DB || !rota) throw new Error('Firebase não configurado no link.');
+  const url=FIREBASE_DB + '/vesco_rotas_motorista/' + encodeURIComponent(firebaseSafeId(rota)) + '.json';
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(),9000);
+  try{
+    const res=await fetch(url,{signal:ctrl.signal,cache:'no-store'});
+    clearTimeout(timer);
+    if(!res.ok) throw new Error('Firebase HTTP '+res.status);
+    const data=await res.json();
+    if(!data) throw new Error('Rota não encontrada no Firebase.');
+    if(token && String(data.token||data.motorista_token||'') !== String(token)) throw new Error('Token inválido no Firebase.');
+    return normalizeOfflinePayload({
+      id:data.rota_id||data.id||rota,
+      token:data.token||token,
+      nome:data.nome_rota||data.nome||'Rota',
+      motorista:data.motorista||'—',
+      origem:data.origem||'Rua São Leopoldo 92',
+      paradas: Array.isArray(data.paradas)?data.paradas:(typeof data.paradas_json==='string'?JSON.parse(data.paradas_json||'[]'):[])
+    });
+  }catch(e){
+    clearTimeout(timer);
+    throw e;
+  }
 }
 
 function jsonp(params,timeout=16000){
@@ -241,14 +271,26 @@ async function confirmar(ev,id){
 async function load(forceOnline=false){
   const offlinePayload=normalizeOfflinePayload(decodeRouteData(packedData));
 
-  // Abre instantâneo pelo link, sem esperar Apps Script.
+  if(FIREBASE_DB && (!forceOnline || STORE==='firebase')){
+    try{
+      setSub('Buscando rota no Firebase...');
+      const fb=await loadFirebaseRoute();
+      state.rota=fb.rota;
+      state.pedidos=fb.pedidos;
+      state.offline=false;
+      state.apiError='';
+      render();
+      return;
+    }catch(e){
+      state.apiError='Firebase: '+(e.message||e);
+    }
+  }
+
   if(offlinePayload && !forceOnline){
     state.rota=offlinePayload.rota;
     state.pedidos=offlinePayload.pedidos;
     state.offline=true;
     render();
-
-    // tenta atualizar em segundo plano
     setTimeout(()=>load(true),300);
     return;
   }
@@ -276,7 +318,7 @@ async function load(forceOnline=false){
       state.apiError=e.message || String(e);
       render();
     }else{
-      document.getElementById('app').innerHTML=`<div class="card offline-note"><b>Não carregou a rota.</b><br>Erro: ${esc(e.message||e)}<br><br>Provável causa: Apps Script lento, cota esgotada ou rota não gravada na aba RotasMotorista.</div>`;
+      document.getElementById('app').innerHTML=`<div class="card offline-note"><b>Não carregou a rota.</b><br>Erro: ${esc(e.message||e)}<br><br>Configure o Firebase para abrir rápido no 5G ou gere um link com data offline.</div>`;
       setSub('Erro ao carregar rota');
     }
   }

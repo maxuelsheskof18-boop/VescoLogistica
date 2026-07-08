@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "vesco_rotas_motorista": {
+      "$rota": {
+        ".read": true,
+        ".write": true
+      }
+    }
+  }
+}

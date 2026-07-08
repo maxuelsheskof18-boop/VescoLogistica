@@ -2203,3 +2203,57 @@ body.vesco-v9.v8-sidebar-collapsed .v8-badge{
     min-width:920px;
   }
 }
+
+
+
+/* ============================================================================
+   VESCO V9.5 — compartilhamento de rota + Firebase
+   ============================================================================ */
+#v95ShareModal{
+  display:none;
+  position:fixed;
+  inset:0;
+  z-index:23000;
+}
+#v95ShareModal.open{display:block}
+.v95-share-backdrop{
+  position:absolute;
+  inset:0;
+  background:rgba(2,6,23,.55);
+  backdrop-filter:blur(4px);
+}
+.v95-share-card{
+  position:relative;
+  width:min(680px,calc(100vw - 24px));
+  margin:34px auto;
+  border-radius:24px;
+  background:#fff;
+  border:1px solid #dbe5f1;
+  box-shadow:0 32px 90px rgba(2,6,23,.35);
+  overflow:hidden;
+}
+.v95-share-card header{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  padding:16px 18px;
+  background:linear-gradient(135deg,#07162b,#0b2b55);
+  color:#fff;
+}
+.v95-share-card header h3{margin:0;font-size:19px}
+.v95-share-card header small{color:#bfdbfe;font-weight:850}
+.v95-share-card header button{
+  width:36px;height:36px;border:0;border-radius:12px;
+  background:rgba(255,255,255,.12);color:#fff;font-size:24px;cursor:pointer;
+}
+.v95-share-body{padding:18px;display:grid;gap:12px}
+.v95-share-body label{display:grid;gap:6px;font-size:12px;font-weight:1000;text-transform:uppercase;color:#334155}
+.v95-share-body input{font-size:12px}
+.v95-share-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.v95-share-note{display:block;color:#64748b;font-weight:850}
+@media(max-width:760px){
+  .v95-share-card{margin:12px auto;border-radius:20px}
+  .v95-share-actions{grid-template-columns:1fr}
+  .v95-share-actions .v8-btn{width:100%}
+}
