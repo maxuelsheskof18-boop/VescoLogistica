@@ -2549,3 +2549,13 @@ body:not(.v8-sidebar-collapsed) .v8-menu button .v110-menu-ping{
 #v8MobileBar button.has-v110-ping i{
   filter:drop-shadow(0 0 8px rgba(239,68,68,.55));
 }
+
+
+/* ============================================================================
+   VESCO V10.11 — Localização obrigatória no app motorista
+   ============================================================================ */
+.v111-location-rule{
+  border-color:#fed7aa !important;
+  background:#fff7ed !important;
+  color:#9a3412 !important;
+}

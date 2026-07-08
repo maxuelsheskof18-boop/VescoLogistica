@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Vesco Motorista V10.10</title>
+  <title>Vesco Motorista V10.11</title>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <style>
@@ -58,6 +58,8 @@ let state={rota:null,pedidos:[],offline:false,apiError:''};
 let geoWatchId=null;
 let geoTracking=false;
 let lastLocation=null;
+let geoPromptedOnOpen=false;
+let geoPermissionBlocked=false;
 
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function txt(v){return String(v??'').trim();}
@@ -208,9 +210,14 @@ function render(){
         <div class="stat"><b>${entregues}</b><span>Entregues</span></div>
       </div>
       <div class="top-actions">
-        <button class="btn-light" onclick="copyCurrentLink()"><i class="fa-solid fa-copy"></i>&nbsp; Copiar link da rota</button>
-        <button onclick="load(true)"><i class="fa-solid fa-rotate"></i>&nbsp; Atualizar online</button>
+        <span id="trackStatus" class="badge warn">Localização obrigatória</span>
+        <button id="btnTrack" class="done" onclick="iniciarLocalizacao()"><i class="fa-solid fa-location-crosshairs"></i>&nbsp; Permitir localização</button>
+        <button id="btnStopTrack" class="btn-light" onclick="pausarLocalizacao()" disabled><i class="fa-solid fa-pause"></i>&nbsp; Pausar</button>
+        <button class="danger" onclick="finalizarRota()"><i class="fa-solid fa-flag-checkered"></i>&nbsp; Finalizar rota</button>
+        <button class="btn-light" onclick="copyCurrentLink()"><i class="fa-solid fa-copy"></i>&nbsp; Copiar link</button>
+        <button onclick="load(true)"><i class="fa-solid fa-rotate"></i>&nbsp; Atualizar</button>
       </div>
+      <div class="card offline-note v111-location-rule"><b>Localização obrigatória:</b> para dar baixa em qualquer entrega, o motorista precisa autorizar o GPS. Sem localização, a confirmação será bloqueada.</div>
     </section>
     ${pedidos.map((p,idx)=>{
       const id=txt(p.id||p.pedido_key||p.numero||p.pedido||idx);
@@ -242,6 +249,7 @@ function render(){
     }).join('') || '<div class="card">Nenhum pedido na rota.</div>'}
   `;
   updateTrackingUi();
+  setTimeout(()=>pedirLocalizacaoAoAbrir(), 700);
 }
 
 function openForm(id){ document.querySelectorAll('.form.open').forEach(f=>f.classList.remove('open')); const f=document.querySelector(`[data-form-for="${CSS.escape(id)}"]`); if(f){f.classList.add('open');f.scrollIntoView({behavior:'smooth',block:'center'});} }
@@ -291,6 +299,74 @@ async function saveLocationFirebase(payload){
   }).catch(()=>{});
   return payload;
 }
+
+function isLastLocationFresh(maxMinutes=15){
+  if(!lastLocation) return false;
+  const t=Date.parse(lastLocation.updated_at || lastLocation.atualizado_em || '');
+  if(!Number.isFinite(t)) return false;
+  return (Date.now()-t) <= maxMinutes*60*1000;
+}
+function getCurrentPositionPromise(){
+  return new Promise((resolve,reject)=>{
+    if(!('geolocation' in navigator)){
+      reject(new Error('Este celular/navegador não permite localização.'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy:true,
+      maximumAge:0,
+      timeout:18000
+    });
+  });
+}
+async function pedirLocalizacaoObrigatoria(motivo='confirmar a entrega'){
+  if(!FIREBASE_DB){
+    geoPermissionBlocked=true;
+    updateTrackingUi();
+    throw new Error('Firebase não configurado. Não é possível confirmar entrega com localização.');
+  }
+  if(!('geolocation' in navigator)){
+    geoPermissionBlocked=true;
+    updateTrackingUi();
+    throw new Error('Este celular/navegador não permite localização.');
+  }
+
+  toast('Para '+motivo+', autorize a localização.', 4500);
+
+  try{
+    const pos=await getCurrentPositionPromise();
+    const payload=trackingPayloadFromPosition(pos);
+    await saveLocationFirebase(payload);
+    lastLocation=payload;
+    geoPermissionBlocked=false;
+    updateTrackingUi();
+    return payload;
+  }catch(e){
+    geoPermissionBlocked=true;
+    updateTrackingUi();
+    const msg=String(e && e.message ? e.message : e || '').toLowerCase();
+    const denied = e && (e.code===1 || msg.includes('denied') || msg.includes('permission') || msg.includes('permiss'));
+    if(denied){
+      throw new Error('Permissão de localização negada. Não é possível dar baixa sem autorizar a localização.');
+    }
+    throw new Error('Não consegui capturar a localização. Ative o GPS e tente novamente.');
+  }
+}
+async function pedirLocalizacaoAoAbrir(){
+  if(geoPromptedOnOpen || lastLocation) return;
+  geoPromptedOnOpen=true;
+  try{
+    await pedirLocalizacaoObrigatoria('usar a rota');
+    toast('Localização autorizada. Você já pode entregar.', 2600);
+  }catch(e){
+    toast(e.message || e, 5200);
+  }
+}
+async function garantirLocalizacaoParaEntrega(){
+  if(isLastLocationFresh(15)) return lastLocation;
+  return await pedirLocalizacaoObrigatoria('confirmar a entrega');
+}
+
 function updateTrackingUi(){
   const btn=document.getElementById('btnTrack');
   const stop=document.getElementById('btnStopTrack');
@@ -298,8 +374,19 @@ function updateTrackingUi(){
   if(btn) btn.disabled=geoTracking;
   if(stop) stop.disabled=!geoTracking;
   if(status){
-    status.textContent=geoTracking ? 'Localização ativa' : (lastLocation ? 'Localização pausada' : 'Localização não iniciada');
-    status.className='badge ' + (geoTracking?'ok':(lastLocation?'warn':'off'));
+    if(geoTracking){
+      status.textContent='Localização ativa';
+      status.className='badge ok';
+    }else if(isLastLocationFresh(15)){
+      status.textContent='Localização autorizada';
+      status.className='badge ok';
+    }else if(geoPermissionBlocked){
+      status.textContent='Localização bloqueada';
+      status.className='badge off';
+    }else{
+      status.textContent='Localização obrigatória';
+      status.className='badge warn';
+    }
   }
 }
 function iniciarLocalizacao(){
@@ -356,7 +443,10 @@ function finalizarRota(){
 
 
 async function saveDeliveryFirebase(id, payload){
-  if(!FIREBASE_DB || !rota) return null;
+  if(!FIREBASE_DB || !rota) throw new Error('Firebase não configurado. Não é possível confirmar entrega.');
+  if(!lastLocation && !(payload && payload.localizacao_entrega)){
+    throw new Error('Localização obrigatória. Autorize o GPS antes de dar baixa.');
+  }
   const dataBR=new Date().toLocaleDateString('pt-BR');
   const safePedido=firebaseSafeId(id);
   const safeRota=firebaseSafeId(rota);
@@ -366,7 +456,7 @@ async function saveDeliveryFirebase(id, payload){
     data_entrega_realizada:dataBR,
     entregue_em:new Date().toISOString(),
     updated_at:new Date().toISOString(),
-    localizacao_entrega:lastLocation || null
+    localizacao_entrega:(payload && payload.localizacao_entrega) || lastLocation || null
   });
   await fetch(FIREBASE_DB + '/vesco_rotas_motorista/' + encodeURIComponent(safeRota) + '/entregas/' + encodeURIComponent(safePedido) + '.json', {
     method:'PUT',
@@ -402,11 +492,22 @@ async function confirmar(ev,id){
   const btn=form.querySelector('button[type="submit"]');
   if(btn)btn.disabled=true;
 
+  let entregaLocation=null;
+  try{
+    entregaLocation=await garantirLocalizacaoParaEntrega();
+  }catch(e){
+    toast(e.message || e, 6500);
+    alert(e.message || e);
+    if(btn)btn.disabled=false;
+    return;
+  }
+
   const payload={
     recebedor,
     documento,
     transportador:form.transportador.value,
-    observacao:form.observacao.value.trim()
+    observacao:form.observacao.value.trim(),
+    localizacao_entrega:entregaLocation
   };
 
   let firebaseOk=false;
@@ -538,7 +639,7 @@ async function load(forceOnline=false){
   }
 }
 
-window.VescoMotorista={load,copyCurrentLink,iniciarLocalizacao,pausarLocalizacao,finalizarRota,debug:()=>({rota,token:token?'ok':'',offline:state.offline,geoTracking,lastLocation,state})};
+window.VescoMotorista={load,copyCurrentLink,iniciarLocalizacao,pausarLocalizacao,finalizarRota,pedirLocalizacaoObrigatoria,garantirLocalizacaoParaEntrega,debug:()=>({rota,token:token?'ok':'',offline:state.offline,geoTracking,geoPermissionBlocked,lastLocation,state})};
 load();
 </script>
 </body>
