@@ -2340,3 +2340,62 @@ body.vesco-v9 #v8Topbar::after{
 .v8-route-actions button[type="button"]{
   cursor:pointer;
 }
+
+
+
+/* ============================================================================
+   VESCO V10.5 — Operação limpa, badges e dados de separação
+   ============================================================================ */
+.v105-menu-badge{
+  margin-left:auto;
+  min-width:20px;
+  height:20px;
+  padding:0 6px;
+  border-radius:999px;
+  background:#ef4444;
+  color:#fff;
+  display:inline-grid;
+  place-items:center;
+  font-size:10px;
+  font-weight:1000;
+  box-shadow:0 8px 18px rgba(239,68,68,.28);
+}
+body.vesco-v9.v8-sidebar-collapsed .v105-menu-badge{
+  position:absolute;
+  top:-4px;
+  right:-4px;
+  margin:0;
+  border:2px solid #071426;
+}
+.v105-payment{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  margin-top:6px;
+  padding:5px 8px;
+  border-radius:999px;
+  background:#eef6ff;
+  color:#1769ff;
+  font-size:11px;
+  font-style:normal;
+  font-weight:1000;
+  border:1px solid #bfdbfe;
+}
+.v105-products{
+  max-width:420px;
+  white-space:normal;
+  line-height:1.25;
+  font-size:12px;
+  font-weight:850;
+  color:#0f172a;
+}
+.v8-table .v105-products{
+  min-width:260px;
+}
+.v8-page-head p:empty,
+#v8Sub:empty{
+  display:none;
+}
+@media(max-width:760px){
+  .v105-products{max-width:320px}
+}
