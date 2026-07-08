@@ -1,8 +1,8 @@
-// modulo.vesco-v8-operacional.js — V10.2 FIREBASE FIRST
+// modulo.vesco-v8-operacional.js — V10.3 SHARE FIX
 // Correções: Flex sem ERP, logística sem entregues, faturamento mensal com seletor de mês, coordenadas sem inversão.
 
 (function(){
-  if (window.VescoV8 && window.VescoV8.__v102) return;
+  if (window.VescoV8 && window.VescoV8.__v103) return;
 
   const API_MAIN = window.VESCO_API_URL || "https://script.google.com/macros/s/AKfycbxEzbxBABMDwi7B7tn_1p-lC0vc50JjHFOrH3w42Oog2-5R2-WMYSrQ27ED7wduJUN6/exec";
   const API_FLEX = window.VESCO_API_FLEX_URL || "https://script.google.com/macros/s/AKfycbzDp2qs2S_MxDc_3afY1TurNKYEwfYKkk2cc4IliNxLiVaJuSKYyRqofOUMnhdFBjwNwg/exec";
@@ -382,7 +382,7 @@
   }
   function snapshotFromState(){
     return {
-      version:"V10.2",
+      version:"V10.3",
       date:state.date,
       month:state.month,
       updated_at:new Date().toISOString(),
@@ -445,14 +445,14 @@
   async function saveFirebaseSnapshot(snap){
     if(!snap) return;
     saveLocalSnapshot(snap);
-    try{ await firebasePut(firebaseCacheKey(), snap, 6500); }catch(e){ console.warn("V10.2: não salvou cache por data no Firebase.", e.message||e); }
-    try{ await firebasePut("vesco_cache/painel/latest", snap, 6500); }catch(e){ console.warn("V10.2: não salvou cache latest no Firebase.", e.message||e); }
+    try{ await firebasePut(firebaseCacheKey(), snap, 6500); }catch(e){ console.warn("V10.3: não salvou cache por data no Firebase.", e.message||e); }
+    try{ await firebasePut("vesco_cache/painel/latest", snap, 6500); }catch(e){ console.warn("V10.3: não salvou cache latest no Firebase.", e.message||e); }
   }
   async function firebasePatchOrder(id, patch){
     const payload=Object.assign({}, patch||{}, {updated_at:new Date().toISOString()});
     const key=firebaseSafeId(id);
     try{ await firebasePatch("vesco_operacao/orders/" + key, payload, 6500); }
-    catch(e){ console.warn("V10.2: patch Firebase falhou.", e.message||e); }
+    catch(e){ console.warn("V10.3: patch Firebase falhou.", e.message||e); }
     const all=[...(state.orders||[]),...(state.flex||[])];
     all.forEach(o=>{
       const vals=[orderKey(o),number(o),ecom(o),o.id,o.id_tiny,o.numero,o.numero_ecommerce,o.pedido_key].map(txt).filter(Boolean);
@@ -476,7 +476,7 @@
         gotAnything=true;
       }
     }catch(e){
-      console.warn("V10.2: Apps Script ERP lento/indisponível; Firebase mantém UI.", e.message);
+      console.warn("V10.3: Apps Script ERP lento/indisponível; Firebase mantém UI.", e.message);
     }
 
     try{
@@ -492,7 +492,7 @@
         saveStoredFlex(flex, state.month);
       }
     }catch(e){
-      console.warn("V10.2: Apps Script Flex lento/indisponível; Firebase mantém UI.", e.message);
+      console.warn("V10.3: Apps Script Flex lento/indisponível; Firebase mantém UI.", e.message);
     }
 
     try{
@@ -500,7 +500,7 @@
       rotas=extractArray(rp,["rotas","data","rows"]);
       if(rotas.length) gotAnything=true;
     }catch(e){
-      console.warn("V10.2: rotas Apps Script lento/indisponível; Firebase/local mantém UI.", e.message);
+      console.warn("V10.3: rotas Apps Script lento/indisponível; Firebase/local mantém UI.", e.message);
     }
 
     if(!gotAnything) return false;
@@ -533,7 +533,7 @@ async function loadData(force=false){
     state.loading=true;
     showLoading(true);
 
-    // V10.2: Firebase-first. A tela não fica presa esperando Apps Script.
+    // V10.3: Firebase-first. A tela não fica presa esperando Apps Script.
     let quickLoaded=false;
 
     const snapFb=await loadFirebaseSnapshot();
@@ -1329,15 +1329,16 @@ function fastRouteLink(rota, opts={}){
     url.searchParams.set("token", routeToken(rota));
     url.searchParams.set("api", API_MAIN);
     const db=firebaseDbUrl();
-    if(db) url.searchParams.set("fb", db);
-
-    // V10.2: usa Firebase sempre que existir URL.
-    // Também leva data fallback se o salvamento ainda não foi confirmado.
-    if(db) url.searchParams.set("store","firebase");
-    if(!opts.firebase && !rota.__firebaseSaved){
-      const data=encodeRoutePayload(routeOfflinePayload(rota));
-      if(data) url.searchParams.set("data", data);
+    if(db){
+      url.searchParams.set("fb", db);
+      url.searchParams.set("store","firebase");
     }
+
+    // V10.3: SEMPRE leva data como fallback.
+    // Mesmo com Firebase, se o banco estiver vazio ou a gravação falhar, o motorista abre a rota.
+    const data=encodeRoutePayload(routeOfflinePayload(rota));
+    if(data) url.searchParams.set("data", data);
+
     return url.toString();
   }
 
@@ -1536,7 +1537,8 @@ function fastRouteLink(rota, opts={}){
           <a class="v8-btn" href="${esc(app)}" target="_blank" rel="noopener">App motorista</a>
           <a class="v8-btn secondary" href="${esc(maps)}" target="_blank" rel="noopener">Google Maps</a>
           <a class="v8-btn orange" href="${esc(waze)}" target="_blank" rel="noopener">Waze</a>
-          <button class="v8-btn secondary" onclick="VescoV8.shareRouteById('${esc(routeId(r))}')">Copiar/WhatsApp</button>
+          <button class="v8-btn secondary" onclick="VescoV8.copyRouteLinkById('${esc(routeId(r))}')">Copiar link</button>
+          <button class="v8-btn green" onclick="VescoV8.openWhatsAppRouteById('${esc(routeId(r))}')">WhatsApp</button>
         </div>
       </div>`;
     }).join("");
@@ -1547,33 +1549,81 @@ function fastRouteLink(rota, opts={}){
     try{
       if(navigator.clipboard && window.isSecureContext){
         await navigator.clipboard.writeText(link);
-      }else{
-        const ta=document.createElement("textarea");
-        ta.value=link;
-        ta.setAttribute("readonly","");
-        ta.style.position="fixed";
-        ta.style.left="-9999px";
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        ta.remove();
-      }
-      return true;
-    }catch(e){
-      try{
-        const ta=document.createElement("textarea");
-        ta.value=link;
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        document.execCommand("copy");
-        ta.remove();
         return true;
-      }catch(err){
-        prompt("Copie o link do motorista:", link);
-        return false;
       }
+    }catch(e){}
+
+    try{
+      const ta=document.createElement("textarea");
+      ta.value=link;
+      ta.setAttribute("readonly","");
+      ta.style.position="fixed";
+      ta.style.top="0";
+      ta.style.left="-9999px";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);
+      const ok=document.execCommand("copy");
+      ta.remove();
+      if(ok) return true;
+    }catch(e){}
+
+    return false;
+  }
+
+  function routeShareText(rota, link){
+    return `Rota Vesco - ${routeName(rota)}\nMotorista: ${txt(rota.motorista||"—")}\nPedidos: ${routePedidosCount(rota)}\n${link}`;
+  }
+
+  function whatsappRouteLink(rota, link){
+    return "https://wa.me/?text=" + encodeURIComponent(routeShareText(rota, link));
+  }
+
+  function getRouteById(id){
+    return (state.rotas||[]).find(r=>routeId(r)===txt(id)) || null;
+  }
+
+  async function ensureRouteFirebaseSaved(rota){
+    if(!rota) return false;
+    if(!firebaseEnabled()) return false;
+    if(rota.__firebaseSaved) return true;
+    const res=await saveRouteFirebase(rota);
+    if(res && res.success){
+      rota.__firebaseSaved=true;
+      saveLocalRota(rota);
+      return true;
     }
+    return false;
+  }
+
+  async function linkForRoute(rota){
+    await ensureRouteFirebaseSaved(rota);
+    return fastRouteLink(rota,{firebase:!!rota.__firebaseSaved});
+  }
+
+  async function copyRouteLinkById(id){
+    const rota=getRouteById(id);
+    if(!rota){ alert("Rota não encontrada. Atualize o painel."); return false; }
+    const link=await linkForRoute(rota);
+    const ok=await copyRouteLink(link);
+    if(ok){
+      alert("Link da rota copiado.");
+      return true;
+    }
+    prompt("Não consegui copiar automaticamente. Copie o link:", link);
+    return false;
+  }
+
+  async function openWhatsAppRouteById(id){
+    const rota=getRouteById(id);
+    if(!rota){ alert("Rota não encontrada. Atualize o painel."); return; }
+    const link=await linkForRoute(rota);
+    const wa=whatsappRouteLink(rota, link);
+
+    // Tenta copiar também, mas o principal é abrir o WhatsApp.
+    copyRouteLink(link).catch(()=>{});
+    window.open(wa, "_blank", "noopener");
   }
 
   function ensureShareModal(){
@@ -1585,13 +1635,15 @@ function fastRouteLink(rota, opts={}){
     }
     return modal;
   }
+
   function closeShareModal(){
     const modal=document.getElementById("v95ShareModal");
     if(modal) modal.classList.remove("open");
   }
+
   async function openShareRouteModal(rota, link){
     const modal=ensureShareModal();
-    const wa="https://wa.me/?text=" + encodeURIComponent("Rota Vesco - " + routeName(rota) + "\\n" + link);
+    const wa=whatsappRouteLink(rota, link);
     modal.innerHTML=`
       <div class="v95-share-backdrop" onclick="VescoV8.closeShareModal()"></div>
       <section class="v95-share-card">
@@ -1600,46 +1652,34 @@ function fastRouteLink(rota, opts={}){
           <label>Link do motorista<input id="v95ShareInput" class="v8-input" value="${esc(link)}" readonly></label>
           <div class="v95-share-actions">
             <button class="v8-btn" onclick="VescoV8.copyShareInput()">Copiar link</button>
-            <a class="v8-btn green" target="_blank" rel="noopener" href="${esc(wa)}">Enviar WhatsApp</a>
+            <a class="v8-btn green" target="_blank" rel="noopener" href="${esc(wa)}">Abrir WhatsApp</a>
             <a class="v8-btn secondary" target="_blank" rel="noopener" href="${esc(link)}">Abrir app</a>
           </div>
-          <small class="v95-share-note">${firebaseEnabled()?"Firebase configurado: link curto e rápido.":"Firebase ainda não configurado: link usa dados no próprio URL."}</small>
+          <small class="v95-share-note">O link agora leva Firebase + data fallback. Se o Firebase falhar, o motorista ainda abre a rota.</small>
         </div>
       </section>`;
     modal.classList.add("open");
     setTimeout(()=>{ const inp=document.getElementById("v95ShareInput"); if(inp){inp.focus();inp.select();}},60);
-    const ok=await copyRouteLink(link);
-    if(ok) alert("Link copiado. Também deixei a opção de WhatsApp aberta no modal.");
   }
+
   async function copyShareInput(){
     const inp=document.getElementById("v95ShareInput");
     if(!inp) return;
-    inp.focus(); inp.select();
+    inp.focus();
+    inp.select();
+    inp.setSelectionRange(0, inp.value.length);
     const ok=await copyRouteLink(inp.value);
-    alert(ok?"Link copiado.":"Use Ctrl+C para copiar.");
+    if(ok) alert("Link copiado.");
+    else prompt("Copie o link:", inp.value);
   }
+
   async function shareRouteById(id){
-    const rota=(state.rotas||[]).find(r=>routeId(r)===txt(id));
+    const rota=getRouteById(id);
     if(!rota){ alert("Rota não encontrada. Atualize o painel."); return; }
-
-    let firebaseSaved=!!rota.__firebaseSaved;
-    if(firebaseEnabled() && !firebaseSaved){
-      const res=await saveRouteFirebase(rota);
-      if(res.success){
-        rota.__firebaseSaved=true;
-        saveLocalRota(rota);
-        firebaseSaved=true;
-      }
-    }
-
-    const link=fastRouteLink(rota,{firebase:firebaseSaved});
-    if(navigator.share){
-      try{
-        await navigator.share({title:"Rota Vesco", text:"Rota Vesco - " + routeName(rota), url:link});
-        return;
-      }catch(e){}
-    }
+    const link=await linkForRoute(rota);
     await openShareRouteModal(rota,link);
+    const ok=await copyRouteLink(link);
+    if(ok) console.log("V10.3: link copiado automaticamente.");
   }
 
 
@@ -1824,7 +1864,7 @@ function fastRouteLink(rota, opts={}){
     }
   }
   async function updateStatus(id,statusNovo){
-    // V10.2: alteração instantânea no Firebase; Apps Script em segundo plano.
+    // V10.3: alteração instantânea no Firebase; Apps Script em segundo plano.
     try{
       await firebasePatchOrder(id,{status_logistica:statusNovo,operador:"Painel"});
       render();
@@ -2371,19 +2411,19 @@ function render(){
   async function go(tab){ state.tab=tab; await ensureData(); render(); }
   function interceptOldClicks(){ document.addEventListener("click",e=>{ const btn=e.target.closest?.("[data-v7tab], [data-v8tab], #v7Sidebar button, .tab-nav button"); if(!btn)return; const label=norm(btn.dataset.v7tab||btn.dataset.v8tab||btn.textContent||""); const map={"dashboard":"dashboard","separacao":"separacao","separados hoje":"separados","separados":"separados","logistica":"logistica","logistica erp":"logistica","logística":"logistica","pronto para envio":"saiu","retiradas":"retiradas","tarefas frota":"tarefas","tarefas":"tarefas","frota":"tarefas","envios flex":"flex","flex":"flex","entregues":"entregues"}; const tab=map[label]||(label.includes("separados")?"separados":label.includes("log")?"logistica":label.includes("flex")?"flex":""); if(tab){e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); go(tab);}},true); }
   async function init(){ state.tarefas=loadTarefas(); autoCleanFlexStorageV87(); layout(); interceptOldClicks(); window.focusOrderOnMap=id=>focus("logistica",id); window.focusFlexOnMap=id=>focus("flex",id); await loadData(true); render(); }
-  window.VescoV8={__v82:true,__v821:true,__v84:true,__v86:true,__v861:true,__v87:true,__v871:true,__v872:true,__v873:true,__v874:true,__v875:true,__v876:true,__v90:true,__v91:true,__v92:true,__v921:true,__v922:true,__v93:true,__v94:true,__v95:true,__v100:true,__v101:true,__v102:true,state,init,go,
+  window.VescoV8={__v82:true,__v821:true,__v84:true,__v86:true,__v861:true,__v87:true,__v871:true,__v872:true,__v873:true,__v874:true,__v875:true,__v876:true,__v90:true,__v91:true,__v92:true,__v921:true,__v922:true,__v93:true,__v94:true,__v95:true,__v100:true,__v101:true,__v102:true,__v103:true,state,init,go,
     openFlexMonth:async(month)=>{state.month=month||state.month; const m=document.getElementById("v8Month"); if(m)m.value=state.month; await loadData(true); renderFlex();},
     saveFlexMonthNow:()=>{const saved=saveStoredFlex(flexList(),state.month); alert(saved.saved?`Mês armazenado: ${monthLabel(saved.month)} — ${saved.total} pedido(s).`:`Nada novo para armazenar em ${monthLabel(saved.month)}.`); renderFlex(); return saved;},
     refreshFlexOnly:async()=>{await loadData(true); saveStoredFlex(state.flex,state.month); renderFlex();},
     clearFlexStorage:()=>{const removed=clearFlexStorage(); alert(`Armazenamento Flex limpo: ${removed.length} item(ns). Clique em Atualizar Flex.`); renderFlex(); return removed;},
     autoCleanFlexStorageV87,
     sleep,
-    routeReadyList,routeFlexExtras,addFlexToRouteByCode,removeFlexFromRoute,routeMotoristaLink,routeOfflinePayload,encodeRoutePayload,routeOrdersRows,routeOrdersStats,renderPedidosEmRota,confirmarEntregaRotaSite,openMapForRouteOrder,shareRouteById,openShareRouteModal,copyShareInput,closeShareModal,saveRouteFirebase,testFirebaseRoutes,fastRouteLink,localRotas,firebasePatchOrder,refreshFromAppsScriptBackground,loadFirebaseSnapshot,saveFirebaseSnapshot,
+    routeReadyList,routeFlexExtras,addFlexToRouteByCode,removeFlexFromRoute,routeMotoristaLink,routeOfflinePayload,encodeRoutePayload,routeOrdersRows,routeOrdersStats,renderPedidosEmRota,confirmarEntregaRotaSite,openMapForRouteOrder,shareRouteById,openShareRouteModal,copyShareInput,closeShareModal,copyRouteLinkById,openWhatsAppRouteById,whatsappRouteLink,saveRouteFirebase,testFirebaseRoutes,fastRouteLink,localRotas,firebasePatchOrder,refreshFromAppsScriptBackground,loadFirebaseSnapshot,saveFirebaseSnapshot,
     salvarDetalhesPedido,marcarPendenciaProduto,resolverPendenciaProduto,pendenciasProdutoList,abrirRelatorioPendencia,abrirObsLinkPedido,salvarObsLinkPedido,salvarRelatorioPendencia,fecharPedidoModal,
     runFlexGeocode,statusFlexGeocode,autoGeocodeMap,geocodeAddressViaFlexApi,openMapForOrder,openGoogleMapsForList,googleMapsDirectionsUrlFromOrders,
     renderTarefasFrota,registrarTarefaFrota,concluirTarefaFrota,removerTarefaFrota,tarefasFrotaList,
     sidebar:()=>{state.sidebarCollapsed=!state.sidebarCollapsed; document.body.classList.toggle("v8-sidebar-collapsed",state.sidebarCollapsed); localStorage.setItem("vesco:v8:sidebarCollapsed",state.sidebarCollapsed?"1":"0");},
-    today:async()=>{state.date=todayISO(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; await loadData(true); render();},refresh:async()=>{await loadData(true); render();},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{version:"V10.2",date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
+    today:async()=>{state.date=todayISO(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; await loadData(true); render();},refresh:async()=>{await loadData(true); render();},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{version:"V10.3",date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",init); else init();
-  console.log("VESCO V10.2 ativo — Firebase-first: UI rápida, Apps Script só sincroniza em segundo plano.");
+  console.log("VESCO V10.3 ativo — WhatsApp/cópia corrigidos e link do motorista com fallback obrigatório.");
 })();

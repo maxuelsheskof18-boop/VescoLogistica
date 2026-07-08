@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Vesco Motorista V10.2</title>
+  <title>Vesco Motorista V10.3</title>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <style>
@@ -348,29 +348,53 @@ async function confirmar(ev,id){
 
 async function load(forceOnline=false){
   const offlinePayload=normalizeOfflinePayload(decodeRouteData(packedData));
+  const offlineCount=offlinePayload && offlinePayload.pedidos ? offlinePayload.pedidos.length : 0;
 
-  if(FIREBASE_DB && (!forceOnline || STORE==='firebase')){
-    try{
-      setSub('Buscando rota no Firebase...');
-      const fb=await loadFirebaseRoute();
-      state.rota=fb.rota;
-      state.pedidos=fb.pedidos;
-      state.offline=false;
-      state.apiError='';
-      render();
-      return;
-    }catch(e){
-      state.apiError='Firebase: '+(e.message||e);
-    }
-  }
-
+  // V10.3: se o link tem data, abre instantâneo primeiro.
+  // Depois tenta Firebase; só substitui se o Firebase vier com pedidos.
   if(offlinePayload && !forceOnline){
     state.rota=offlinePayload.rota;
     state.pedidos=offlinePayload.pedidos;
     state.offline=true;
+    state.apiError='';
     render();
+
     setTimeout(()=>load(true),300);
     return;
+  }
+
+  if(FIREBASE_DB){
+    try{
+      setSub('Buscando rota no Firebase...');
+      const fb=await loadFirebaseRoute();
+      const fbCount=fb && fb.pedidos ? fb.pedidos.length : 0;
+
+      if(fbCount > 0 || !offlinePayload){
+        state.rota=fb.rota;
+        state.pedidos=fb.pedidos;
+        state.offline=false;
+        state.apiError='';
+        render();
+        return;
+      }
+
+      // Se Firebase existe mas veio sem paradas, mantém fallback do próprio link.
+      state.rota=offlinePayload.rota;
+      state.pedidos=offlinePayload.pedidos;
+      state.offline=true;
+      state.apiError='Firebase retornou rota sem pedidos; usando dados do link.';
+      render();
+      return;
+    }catch(e){
+      state.apiError='Firebase: '+(e.message||e);
+      if(offlinePayload){
+        state.rota=offlinePayload.rota;
+        state.pedidos=offlinePayload.pedidos;
+        state.offline=true;
+        render();
+        return;
+      }
+    }
   }
 
   if(!rota){
@@ -381,7 +405,7 @@ async function load(forceOnline=false){
 
   try{
     setSub('Buscando dados online...');
-    const data=await jsonp({action:'motoristaPedidos',rota,rota_id:rota,token},22000);
+    const data=await jsonp({action:'motoristaPedidos',rota,rota_id:rota,token},12000);
     if(!data || !data.success) throw new Error(data && data.error ? data.error : 'Rota não encontrada ou token inválido.');
     state.rota=data.rota || {id:rota,nome:data.nome_rota||'Rota',motorista:data.motorista||'—',origem:data.origem||'Rua São Leopoldo 92'};
     state.pedidos=data.pedidos || [];
@@ -396,7 +420,7 @@ async function load(forceOnline=false){
       state.apiError=e.message || String(e);
       render();
     }else{
-      document.getElementById('app').innerHTML=`<div class="card offline-note"><b>Não carregou a rota.</b><br>Erro: ${esc(e.message||e)}<br><br>Configure o Firebase para abrir rápido no 5G ou gere um link com data offline.</div>`;
+      document.getElementById('app').innerHTML=`<div class="card offline-note"><b>Não carregou a rota.</b><br>Erro: ${esc(e.message||e)}<br><br>O link precisa ter data=... ou a rota precisa existir no Firebase.</div>`;
       setSub('Erro ao carregar rota');
     }
   }

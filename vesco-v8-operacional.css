@@ -2307,3 +2307,22 @@ body.vesco-v9 #v8Topbar::after{
   color:#1769ff;
   font-weight:1000;
 }
+
+
+
+/* ============================================================================
+   VESCO V10.3 — botões separados copiar/WhatsApp
+   ============================================================================ */
+.v8-route-actions .v8-btn.green{
+  background:#22c55e;
+  color:#fff;
+}
+@media(max-width:760px){
+  .v8-route-actions{
+    display:grid !important;
+    grid-template-columns:1fr 1fr;
+  }
+  .v8-route-actions .v8-btn{
+    width:100%;
+  }
+}
