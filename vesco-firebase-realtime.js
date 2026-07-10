@@ -1,4 +1,4 @@
-// vesco-firebase-realtime.js — VESCO CONTROL V10.17 SHARE DIRECT
+// vesco-firebase-realtime.js — VESCO CONTROL V10.18 SHARE DIRECT
 // Sincroniza operadores em tempo real via Firebase Realtime Database.
 // Carregar depois de firebase-config.js e depois de modulo.vesco-v8-operacional.js.
 
@@ -65,7 +65,7 @@
 
     db = window.firebase.database(app);
     initialized = true;
-    console.log("VESCO Firebase V10.17 conectado:", cfg.databaseURL);
+    console.log("VESCO Firebase V10.18 conectado:", cfg.databaseURL);
     return db;
   }
 
@@ -154,16 +154,40 @@
     routes.forEach(r=>{
       const entregas = r.entregas || {};
       Object.keys(entregas).forEach(k=>{
-        const ent=entregas[k];
+        const ent=entregas[k] || {};
         const pedido=ent.pedido || k;
         applyOrderPatchToState(pedido, {
           status_logistica:"Entregue",
           situacao_nome:"Entregue",
+          is_delivered:true,
+          recebedor:ent.recebedor || ent.nome_recebedor || "",
           nome_recebedor:ent.recebedor || ent.nome_recebedor || "",
           doc_recebedor:ent.documento || ent.doc_recebedor || "",
           data_entrega_realizada:ent.data_entrega_realizada || new Date().toLocaleDateString("pt-BR"),
           entregue_em:ent.entregue_em || ent.updated_at || now()
         });
+
+        // V10.18: mesmo se o pedido não estiver carregado no ERP, aparece em Entregues.
+        const v8=getV8();
+        if(v8 && v8.state){
+          v8.state.deliveredExternal = Array.isArray(v8.state.deliveredExternal) ? v8.state.deliveredExternal : [];
+          const exists=v8.state.deliveredExternal.some(x=>txt(x.pedido_numero||x.pedido||x.numero)===txt(pedido));
+          if(!exists){
+            const stop=(r.paradas||[]).find(s=>[s.pedido,s.numero,s.id,s.ecom].map(txt).includes(txt(pedido))) || {};
+            v8.state.deliveredExternal.push(Object.assign({}, stop, ent, {
+              rota_id:r.rota_id || r.id,
+              pedido_numero:pedido,
+              pedido_id:pedido,
+              cliente_nome:stop.cliente || ent.cliente || "",
+              endereco_completo:stop.endereco || "",
+              status_logistica:"Entregue",
+              situacao_nome:"Entregue",
+              is_delivered:true,
+              data_entrega_realizada:ent.data_entrega_realizada || new Date().toLocaleDateString("pt-BR"),
+              entregue_em:ent.entregue_em || ent.updated_at || now()
+            }));
+          }
+        }
       });
     });
 
@@ -353,7 +377,7 @@ async function startListeners(){
     if(!v8 || v8.__firebasePatchedV10) return;
     v8.__firebasePatchedV10 = true;
 
-    // V10.17: não sobrescreve updateStatus do módulo principal.
+    // V10.18: não sobrescreve updateStatus do módulo principal.
     // O módulo principal já salva operador, início, fim e status em todos os IDs do pedido.
     const oldConfirm = v8.confirmarEntregaRotaSite;
     v8.confirmarEntregaRotaSite = async function(rotaId, token, pedido){
@@ -389,7 +413,7 @@ async function startListeners(){
       return saved;
     };
 
-    console.log("VESCO Firebase V10.17: métodos do painel sincronizados.");
+    console.log("VESCO Firebase V10.18: métodos do painel sincronizados.");
   }
 
   async function boot(){
@@ -417,5 +441,5 @@ async function startListeners(){
     })
   };
 
-  boot().catch(e=>console.error("VESCO Firebase V10.17 erro:", e));
+  boot().catch(e=>console.error("VESCO Firebase V10.18 erro:", e));
 })();
