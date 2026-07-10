@@ -1,4 +1,4 @@
-// vesco-firebase-realtime.js — VESCO CONTROL V10.11 SHARE DIRECT
+// vesco-firebase-realtime.js — VESCO CONTROL V10.15 SHARE DIRECT
 // Sincroniza operadores em tempo real via Firebase Realtime Database.
 // Carregar depois de firebase-config.js e depois de modulo.vesco-v8-operacional.js.
 
@@ -18,6 +18,7 @@
   let initialized = false;
   let lastOrdersPatch = {};
   let lastRoutes = [];
+  let orderListenerReady = false;
 
   function txt(v){ return String(v ?? "").trim(); }
   function norm(v){ return txt(v).normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim(); }
@@ -64,7 +65,7 @@
 
     db = window.firebase.database(app);
     initialized = true;
-    console.log("VESCO Firebase V10.11 conectado:", cfg.databaseURL);
+    console.log("VESCO Firebase V10.15 conectado:", cfg.databaseURL);
     return db;
   }
 
@@ -232,7 +233,76 @@
     return payload;
   }
 
-  async function startListeners(){
+  
+  function currentOperatorName(){
+    return txt(localStorage.getItem("vesco:v105:operador") || localStorage.getItem("vesco:v9:operador_pendencia") || window.VESCO_OPERADOR || "");
+  }
+  function patchStamp(p){
+    return txt(p?.updated_at || p?.status_atualizado_em || p?.separacao_fim_em || p?.separacao_inicio_em || p?.entregue_em || "");
+  }
+  function patchStatus(p){
+    return txt(p?.status_logistica || p?.situacao_nome || p?.status || "");
+  }
+  function patchOperator(p){
+    return txt(p?.operador_ultima_alteracao || p?.operador || p?.operador_inicio_separacao || p?.operador_conclusao_separacao || p?.operador_separado || "");
+  }
+  function orderDisplay(id, patch){
+    return txt(patch?.numero || patch?.pedido || patch?.pedido_numero || id).replace(/^.*__/,"");
+  }
+  function ensureRealtimeToastBox(){
+    let box=document.getElementById("vescoRealtimeToasts");
+    if(!box){
+      box=document.createElement("div");
+      box.id="vescoRealtimeToasts";
+      box.className="vesco-realtime-toasts";
+      document.body.appendChild(box);
+    }
+    return box;
+  }
+  function showRealtimeToast({title,body,type="info"}){
+    const box=ensureRealtimeToastBox();
+    const item=document.createElement("div");
+    item.className="vesco-realtime-toast " + type;
+    item.innerHTML=`<b>${title}</b><small>${body}</small>`;
+    box.appendChild(item);
+    setTimeout(()=>item.classList.add("show"),20);
+    setTimeout(()=>{
+      item.classList.remove("show");
+      setTimeout(()=>item.remove(),450);
+    },5200);
+  }
+  function notifyOrderChanges(prev,next){
+    if(!orderListenerReady) return;
+    const prevObj=prev||{};
+    const nextObj=next||{};
+    Object.keys(nextObj).forEach(id=>{
+      const patch=nextObj[id] || {};
+      const before=prevObj[id] || {};
+      const stamp=patchStamp(patch);
+      if(!stamp || stamp===patchStamp(before)) return;
+
+      const status=patchStatus(patch);
+      if(!status) return;
+
+      const op=patchOperator(patch) || "Operador";
+      const pedido=orderDisplay(id,patch);
+      const s=norm(status);
+      let action="atualizou";
+      let type="info";
+      if(s.includes("em separacao") || s.includes("em separação")){ action="iniciou a separação"; type="start"; }
+      if(s.includes("separado") || s.includes("pronto")){ action="concluiu a separação"; type="done"; }
+      if(s.includes("entregue")){ action="confirmou entrega"; type="done"; }
+
+      showRealtimeToast({
+        title:`${op} ${action}`,
+        body:`Pedido #${pedido} • ${status}`,
+        type
+      });
+    });
+  }
+
+
+async function startListeners(){
     const d=await ensureFirebase();
     if(!d) return false;
 
@@ -243,7 +313,10 @@
     });
 
     d.ref(ORDERS_PATH).on("value", snap=>{
-      lastOrdersPatch = snap.val() || {};
+      const nextPatch = snap.val() || {};
+      notifyOrderChanges(lastOrdersPatch, nextPatch);
+      lastOrdersPatch = nextPatch;
+      orderListenerReady = true;
       const count=applyAllOrderPatches(lastOrdersPatch);
       if(count){
         try{ getV8()?.render?.(); }catch(e){}
@@ -280,19 +353,8 @@
     if(!v8 || v8.__firebasePatchedV10) return;
     v8.__firebasePatchedV10 = true;
 
-    const oldUpdateStatus = v8.updateStatus;
-    if(typeof oldUpdateStatus === "function"){
-      v8.updateStatus = async function(id, statusNovo){
-        await saveOrderPatch(id, {status_logistica:statusNovo, operador:"Painel"});
-        try{
-          return await oldUpdateStatus.call(v8, id, statusNovo);
-        }catch(e){
-          console.warn("Apps Script updateStatus falhou; Firebase manteve alteração.", e.message||e);
-          return {success:true, firebase:true};
-        }
-      };
-    }
-
+    // V10.15: não sobrescreve updateStatus do módulo principal.
+    // O módulo principal já salva operador, início, fim e status em todos os IDs do pedido.
     const oldConfirm = v8.confirmarEntregaRotaSite;
     v8.confirmarEntregaRotaSite = async function(rotaId, token, pedido){
       const recebedor = prompt(`Quem recebeu o pedido #${pedido}?`);
@@ -327,7 +389,7 @@
       return saved;
     };
 
-    console.log("VESCO Firebase V10.11: métodos do painel sincronizados.");
+    console.log("VESCO Firebase V10.15: métodos do painel sincronizados.");
   }
 
   async function boot(){
@@ -355,5 +417,5 @@
     })
   };
 
-  boot().catch(e=>console.error("VESCO Firebase V10.11 erro:", e));
+  boot().catch(e=>console.error("VESCO Firebase V10.15 erro:", e));
 })();

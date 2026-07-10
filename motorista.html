@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Vesco Motorista V10.11</title>
+  <title>Vesco Motorista V10.15</title>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <style>
@@ -60,6 +60,7 @@ let geoTracking=false;
 let lastLocation=null;
 let geoPromptedOnOpen=false;
 let geoPermissionBlocked=false;
+let geoSendTimer=null;
 
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function txt(v){return String(v??'').trim();}
@@ -315,7 +316,7 @@ function getCurrentPositionPromise(){
     navigator.geolocation.getCurrentPosition(resolve, reject, {
       enableHighAccuracy:true,
       maximumAge:0,
-      timeout:18000
+      timeout:14000
     });
   });
 }
@@ -339,6 +340,8 @@ async function pedirLocalizacaoObrigatoria(motivo='confirmar a entrega'){
     await saveLocationFirebase(payload);
     lastLocation=payload;
     geoPermissionBlocked=false;
+    geoTracking=true;
+    iniciarEnvioPeriodicoLocalizacao();
     updateTrackingUi();
     return payload;
   }catch(e){
@@ -357,7 +360,7 @@ async function pedirLocalizacaoAoAbrir(){
   geoPromptedOnOpen=true;
   try{
     await pedirLocalizacaoObrigatoria('usar a rota');
-    toast('Localização autorizada. Você já pode entregar.', 2600);
+    toast('Localização autorizada. Acompanhamento ao vivo iniciado.', 2600);
   }catch(e){
     toast(e.message || e, 5200);
   }
@@ -365,6 +368,33 @@ async function pedirLocalizacaoAoAbrir(){
 async function garantirLocalizacaoParaEntrega(){
   if(isLastLocationFresh(15)) return lastLocation;
   return await pedirLocalizacaoObrigatoria('confirmar a entrega');
+}
+
+
+async function enviarLocalizacaoAtual(silent=true){
+  if(!geoTracking || !('geolocation' in navigator)) return null;
+  try{
+    const pos=await getCurrentPositionPromise();
+    const payload=trackingPayloadFromPosition(pos);
+    await saveLocationFirebase(payload);
+    geoPermissionBlocked=false;
+    updateTrackingUi();
+    if(!silent) toast('Localização atualizada.');
+    return payload;
+  }catch(e){
+    if(!silent) toast('Não consegui atualizar localização: '+(e.message||e),4200);
+    return null;
+  }
+}
+function iniciarEnvioPeriodicoLocalizacao(){
+  if(geoSendTimer) clearInterval(geoSendTimer);
+  geoSendTimer=setInterval(()=>enviarLocalizacaoAtual(true),4000);
+}
+function pararEnvioPeriodicoLocalizacao(){
+  if(geoSendTimer){
+    clearInterval(geoSendTimer);
+    geoSendTimer=null;
+  }
 }
 
 function updateTrackingUi(){
@@ -401,6 +431,7 @@ function iniciarLocalizacao(){
   if(geoWatchId!==null) navigator.geolocation.clearWatch(geoWatchId);
   geoTracking=true;
   updateTrackingUi();
+  iniciarEnvioPeriodicoLocalizacao();
   toast('Solicitando permissão de localização...');
   geoWatchId=navigator.geolocation.watchPosition(async pos=>{
     try{
@@ -408,7 +439,7 @@ function iniciarLocalizacao(){
       await saveLocationFirebase(payload);
       geoTracking=true;
       updateTrackingUi();
-      toast('Localização enviada.',1400);
+      toast('Posição enviada ao vivo no percurso.',1400);
     }catch(e){
       console.warn('Falha ao salvar localização Firebase', e);
       toast('Falha ao enviar localização: '+(e.message||e),4000);
@@ -426,6 +457,7 @@ function pausarLocalizacao(){
     geoWatchId=null;
   }
   geoTracking=false;
+  pararEnvioPeriodicoLocalizacao();
   updateTrackingUi();
   toast('Localização pausada.');
 }
@@ -639,7 +671,7 @@ async function load(forceOnline=false){
   }
 }
 
-window.VescoMotorista={load,copyCurrentLink,iniciarLocalizacao,pausarLocalizacao,finalizarRota,pedirLocalizacaoObrigatoria,garantirLocalizacaoParaEntrega,debug:()=>({rota,token:token?'ok':'',offline:state.offline,geoTracking,geoPermissionBlocked,lastLocation,state})};
+window.VescoMotorista={load,copyCurrentLink,iniciarLocalizacao,pausarLocalizacao,finalizarRota,enviarLocalizacaoAtual,pedirLocalizacaoObrigatoria,garantirLocalizacaoParaEntrega,debug:()=>({rota,token:token?'ok':'',offline:state.offline,geoTracking,geoPermissionBlocked,geoSendTimer:!!geoSendTimer,lastLocation,state})};
 load();
 </script>
 </body>

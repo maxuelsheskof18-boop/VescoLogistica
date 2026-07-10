@@ -2559,3 +2559,225 @@ body:not(.v8-sidebar-collapsed) .v8-menu button .v110-menu-ping{
   background:#fff7ed !important;
   color:#9a3412 !important;
 }
+
+
+/* ============================================================================
+   VESCO V10.12 — Percurso ao vivo estilo Uber/iFood
+   ============================================================================ */
+.v112-live-map-card{
+  margin-top:14px;
+  border:1px solid #dbeafe;
+  border-radius:20px;
+  background:#fff;
+  overflow:hidden;
+  box-shadow:0 14px 36px rgba(15,23,42,.07);
+}
+.v112-map-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  padding:14px 16px;
+  border-bottom:1px solid #eef2f7;
+}
+.v112-map-head h3{
+  margin:0;
+  color:#0f172a;
+}
+.v112-map-head small{
+  display:block;
+  margin-top:3px;
+  color:#64748b;
+  font-weight:850;
+}
+.v112-driver-map{
+  height:430px;
+  width:100%;
+  background:#eaf3ff;
+}
+.v112-driver-marker{
+  width:42px;
+  height:42px;
+  border-radius:999px;
+  display:grid;
+  place-items:center;
+  background:#22c55e;
+  color:#fff;
+  border:4px solid #fff;
+  box-shadow:0 10px 25px rgba(34,197,94,.35);
+  position:relative;
+}
+.v112-driver-marker i{
+  font-size:16px;
+}
+.v112-driver-marker span{
+  position:absolute;
+  right:-8px;
+  top:-8px;
+  min-width:18px;
+  height:18px;
+  padding:0 4px;
+  display:grid;
+  place-items:center;
+  border-radius:999px;
+  background:#0f172a;
+  color:#fff;
+  font-size:10px;
+  font-weight:1000;
+}
+.v112-stop-marker{
+  width:26px;
+  height:26px;
+  border-radius:999px;
+  display:grid;
+  place-items:center;
+  background:#1769ff;
+  color:#fff;
+  border:3px solid #fff;
+  box-shadow:0 8px 18px rgba(23,105,255,.28);
+  font-size:11px;
+  font-weight:1000;
+}
+@media(max-width:760px){
+  .v112-driver-map{height:360px}
+  .v112-map-head{display:grid}
+}
+
+
+/* ============================================================================
+   VESCO V10.13 — Acompanhamento ao vivo estilo iFood/Uber
+   ============================================================================ */
+.v112-live-map-card{
+  border:1px solid #c7d2fe;
+  box-shadow:0 20px 48px rgba(23,105,255,.12);
+}
+.v112-map-head{
+  background:linear-gradient(135deg,#f8fbff,#eef6ff);
+}
+.v112-map-head h3::before{
+  content:"";
+  display:inline-block;
+  width:10px;
+  height:10px;
+  border-radius:999px;
+  background:#22c55e;
+  margin-right:8px;
+  box-shadow:0 0 0 6px rgba(34,197,94,.15);
+}
+.v112-driver-map{
+  height:520px;
+}
+.v112-live-line{
+  stroke:#22c55e !important;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  filter:drop-shadow(0 0 4px rgba(34,197,94,.32));
+}
+.v112-planned-line{
+  stroke:#1769ff !important;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.v112-driver-marker{
+  animation:v112MarkerFloat 1.2s ease-in-out infinite alternate;
+}
+.v112-driver-pulse{
+  stroke:#22c55e !important;
+  fill:#22c55e !important;
+  animation:v112Pulse 1.5s ease-out infinite;
+}
+.v112-stop-marker{
+  background:#ef4444;
+}
+@keyframes v112Pulse{
+  0%{opacity:.9;stroke-width:3;r:10}
+  100%{opacity:.05;stroke-width:12;r:28}
+}
+@keyframes v112MarkerFloat{
+  from{transform:translateY(0)}
+  to{transform:translateY(-2px)}
+}
+@media(max-width:760px){
+  .v112-driver-map{height:430px}
+}
+
+
+/* ============================================================================
+   VESCO V10.14 — Linha ao vivo multipontos
+   ============================================================================ */
+.v114-origin-marker{
+  width:34px;
+  height:34px;
+  border-radius:999px;
+  display:grid;
+  place-items:center;
+  background:#0f172a;
+  color:#fff;
+  border:3px solid #fff;
+  box-shadow:0 10px 22px rgba(15,23,42,.28);
+}
+.v114-origin-marker i{
+  font-size:14px;
+}
+.v114-remaining-line{
+  stroke:#f59e0b !important;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  filter:drop-shadow(0 0 4px rgba(245,158,11,.35));
+}
+.v112-stop-marker{
+  background:#ef4444;
+}
+.v112-stop-marker:has(+ *){
+  background:#ef4444;
+}
+
+
+/* ============================================================================
+   VESCO V10.15 — separado sai da fila + notificações realtime
+   ============================================================================ */
+.vesco-realtime-toasts{
+  position:fixed;
+  right:18px;
+  top:84px;
+  z-index:999999;
+  display:grid;
+  gap:10px;
+  width:min(360px,calc(100vw - 32px));
+  pointer-events:none;
+}
+.vesco-realtime-toast{
+  transform:translateX(24px);
+  opacity:0;
+  transition:.25s ease;
+  border-radius:16px;
+  padding:13px 14px;
+  background:#0f172a;
+  color:#fff;
+  box-shadow:0 18px 40px rgba(15,23,42,.26);
+  border-left:5px solid #1769ff;
+}
+.vesco-realtime-toast.show{
+  transform:translateX(0);
+  opacity:1;
+}
+.vesco-realtime-toast b{
+  display:block;
+  font-size:13px;
+  margin-bottom:4px;
+}
+.vesco-realtime-toast small{
+  display:block;
+  color:#dbeafe;
+  font-weight:800;
+}
+.vesco-realtime-toast.done{border-left-color:#22c55e}
+.vesco-realtime-toast.start{border-left-color:#f59e0b}
+@media(max-width:760px){
+  .vesco-realtime-toasts{
+    left:12px;
+    right:12px;
+    top:72px;
+    width:auto;
+  }
+}

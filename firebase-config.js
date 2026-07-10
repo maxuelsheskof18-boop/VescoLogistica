@@ -1,4 +1,4 @@
-// firebase-config.js — VESCO CONTROL V10.11
+// firebase-config.js — VESCO CONTROL V10.15
 window.VESCO_FIREBASE_CONFIG = {
   apiKey: "AIzaSyDvQhoV0x6B9cTnouzvOxyfqXRtsG2nKq0",
   authDomain: "dashlogistica-49689.firebaseapp.com",
