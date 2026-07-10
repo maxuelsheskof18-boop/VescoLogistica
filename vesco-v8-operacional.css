@@ -2791,3 +2791,19 @@ body:not(.v8-sidebar-collapsed) .v8-menu button .v110-menu-ping{
   background:#f0fdf4 !important;
   color:#166534 !important;
 }
+
+
+/* ============================================================================
+   VESCO V10.17 — rota calculada no mapa
+   ============================================================================ */
+.v117-route-line{
+  stroke:#22c55e !important;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  filter:drop-shadow(0 0 5px rgba(34,197,94,.35));
+}
+.v117-route-fallback{
+  stroke:#f59e0b !important;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
