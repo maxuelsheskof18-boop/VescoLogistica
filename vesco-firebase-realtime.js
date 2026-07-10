@@ -1,4 +1,4 @@
-// vesco-firebase-realtime.js — VESCO CONTROL V10.15 SHARE DIRECT
+// vesco-firebase-realtime.js — VESCO CONTROL V10.16 SHARE DIRECT
 // Sincroniza operadores em tempo real via Firebase Realtime Database.
 // Carregar depois de firebase-config.js e depois de modulo.vesco-v8-operacional.js.
 
@@ -65,7 +65,7 @@
 
     db = window.firebase.database(app);
     initialized = true;
-    console.log("VESCO Firebase V10.15 conectado:", cfg.databaseURL);
+    console.log("VESCO Firebase V10.16 conectado:", cfg.databaseURL);
     return db;
   }
 
@@ -353,7 +353,7 @@ async function startListeners(){
     if(!v8 || v8.__firebasePatchedV10) return;
     v8.__firebasePatchedV10 = true;
 
-    // V10.15: não sobrescreve updateStatus do módulo principal.
+    // V10.16: não sobrescreve updateStatus do módulo principal.
     // O módulo principal já salva operador, início, fim e status em todos os IDs do pedido.
     const oldConfirm = v8.confirmarEntregaRotaSite;
     v8.confirmarEntregaRotaSite = async function(rotaId, token, pedido){
@@ -389,7 +389,7 @@ async function startListeners(){
       return saved;
     };
 
-    console.log("VESCO Firebase V10.15: métodos do painel sincronizados.");
+    console.log("VESCO Firebase V10.16: métodos do painel sincronizados.");
   }
 
   async function boot(){
@@ -417,5 +417,5 @@ async function startListeners(){
     })
   };
 
-  boot().catch(e=>console.error("VESCO Firebase V10.15 erro:", e));
+  boot().catch(e=>console.error("VESCO Firebase V10.16 erro:", e));
 })();

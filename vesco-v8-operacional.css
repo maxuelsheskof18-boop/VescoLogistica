@@ -2781,3 +2781,13 @@ body:not(.v8-sidebar-collapsed) .v8-menu button .v110-menu-ping{
     width:auto;
   }
 }
+
+
+/* ============================================================================
+   VESCO V10.16 — Retirada com recebedor + rastreio contínuo
+   ============================================================================ */
+.v111-location-rule{
+  border-color:#bbf7d0 !important;
+  background:#f0fdf4 !important;
+  color:#166534 !important;
+}

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Vesco Motorista V10.15</title>
+  <title>Vesco Motorista V10.16</title>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <style>
@@ -213,12 +213,12 @@ function render(){
       <div class="top-actions">
         <span id="trackStatus" class="badge warn">Localização obrigatória</span>
         <button id="btnTrack" class="done" onclick="iniciarLocalizacao()"><i class="fa-solid fa-location-crosshairs"></i>&nbsp; Permitir localização</button>
-        <button id="btnStopTrack" class="btn-light" onclick="pausarLocalizacao()" disabled><i class="fa-solid fa-pause"></i>&nbsp; Pausar</button>
+        <button id="btnStopTrack" class="btn-light" onclick="pausarLocalizacao()" disabled><i class="fa-solid fa-lock"></i>&nbsp; Encerrar rastreio</button>
         <button class="danger" onclick="finalizarRota()"><i class="fa-solid fa-flag-checkered"></i>&nbsp; Finalizar rota</button>
         <button class="btn-light" onclick="copyCurrentLink()"><i class="fa-solid fa-copy"></i>&nbsp; Copiar link</button>
         <button onclick="load(true)"><i class="fa-solid fa-rotate"></i>&nbsp; Atualizar</button>
       </div>
-      <div class="card offline-note v111-location-rule"><b>Localização obrigatória:</b> para dar baixa em qualquer entrega, o motorista precisa autorizar o GPS. Sem localização, a confirmação será bloqueada.</div>
+      <div class="card offline-note v111-location-rule"><b>Localização obrigatória:</b> para dar baixa em qualquer entrega, o motorista precisa autorizar o GPS. O rastreio fica ativo até todas as entregas serem confirmadas.</div>
     </section>
     ${pedidos.map((p,idx)=>{
       const id=txt(p.id||p.pedido_key||p.numero||p.pedido||idx);
@@ -397,15 +397,44 @@ function pararEnvioPeriodicoLocalizacao(){
   }
 }
 
+
+function pendingCount(){
+  const pedidos=state.pedidos||[];
+  return pedidos.filter(p=>!isDelivered(p)).length;
+}
+function routeComplete(){
+  return pendingCount()===0 && (state.pedidos||[]).length>0;
+}
+function trackingMustStayOn(){
+  return !routeComplete();
+}
+function ensureTrackingWhenVisible(){
+  if(document.visibilityState==="visible" && trackingMustStayOn() && lastLocation){
+    geoTracking=true;
+    iniciarEnvioPeriodicoLocalizacao();
+    enviarLocalizacaoAtual(true);
+    updateTrackingUi();
+  }
+}
+document.addEventListener("visibilitychange", ensureTrackingWhenVisible);
+window.addEventListener("focus", ensureTrackingWhenVisible);
+
 function updateTrackingUi(){
   const btn=document.getElementById('btnTrack');
   const stop=document.getElementById('btnStopTrack');
   const status=document.getElementById('trackStatus');
-  if(btn) btn.disabled=geoTracking;
-  if(stop) stop.disabled=!geoTracking;
+  const must=trackingMustStayOn();
+  if(btn) btn.disabled=geoTracking && must;
+  if(stop){
+    stop.disabled=must;
+    stop.title=must ? 'O rastreio só encerra quando todas as entregas forem confirmadas.' : 'Rota finalizada, pode encerrar.';
+  }
   if(status){
-    if(geoTracking){
-      status.textContent='Localização ativa';
+    if(geoTracking && must){
+      status.textContent='Rastreio obrigatório ativo';
+      status.className='badge ok';
+    }else if(routeComplete()){
+      status.textContent='Rota finalizada';
       status.className='badge ok';
     }else if(isLastLocationFresh(15)){
       status.textContent='Localização autorizada';
@@ -451,7 +480,13 @@ function iniciarLocalizacao(){
     toast(msg,5000);
   }, {enableHighAccuracy:true, maximumAge:5000, timeout:15000});
 }
-function pausarLocalizacao(){
+function pausarLocalizacao(force=false){
+  if(!force && trackingMustStayOn()){
+    toast('O rastreio só pode encerrar após todas as entregas serem confirmadas.',5200);
+    alert('O rastreio só pode encerrar após todas as entregas serem confirmadas.');
+    updateTrackingUi();
+    return;
+  }
   if(geoWatchId!==null){
     navigator.geolocation.clearWatch(geoWatchId);
     geoWatchId=null;
@@ -459,20 +494,24 @@ function pausarLocalizacao(){
   geoTracking=false;
   pararEnvioPeriodicoLocalizacao();
   updateTrackingUi();
-  toast('Localização pausada.');
+  toast('Localização encerrada.');
 }
-function finalizarRota(){
-  pausarLocalizacao();
+function finalizarRota(force=false){
+  if(!force && trackingMustStayOn()){
+    toast('Ainda há entrega pendente. Finalize todas para encerrar o rastreio.',5200);
+    alert('Ainda há entrega pendente. Finalize todas para encerrar o rastreio.');
+    return;
+  }
+  pausarLocalizacao(true);
   if(FIREBASE_DB && rota){
     fetch(FIREBASE_DB + '/vesco_motoristas_localizacao/' + encodeURIComponent(firebaseSafeId(rota)) + '/status.json', {
       method:'PUT',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({finalizada:true,finalizada_em:new Date().toISOString()})
+      body:JSON.stringify({finalizada:true,finalizada_em:new Date().toISOString(),motivo:'todas_entregas_finalizadas'})
     }).catch(()=>{});
   }
-  toast('Rota finalizada.');
+  toast('Rota finalizada e rastreio encerrado.');
 }
-
 
 async function saveDeliveryFirebase(id, payload){
   if(!FIREBASE_DB || !rota) throw new Error('Firebase não configurado. Não é possível confirmar entrega.');
@@ -557,7 +596,15 @@ async function confirmar(ev,id){
         p.data_entrega_realizada=new Date().toLocaleDateString('pt-BR');
       }
       render();
-      toast('Entrega confirmada em tempo real.');
+      if(routeComplete()){
+        finalizarRota(true);
+      }else{
+        geoTracking=true;
+        iniciarEnvioPeriodicoLocalizacao();
+        enviarLocalizacaoAtual(true);
+        updateTrackingUi();
+      }
+      toast(routeComplete() ? 'Última entrega confirmada. Rastreio encerrado.' : 'Entrega confirmada. Rastreio continua até a próxima.');
     }
 
     // Apps Script em segundo plano/fallback. Se falhar, Firebase já confirmou.
@@ -671,7 +718,7 @@ async function load(forceOnline=false){
   }
 }
 
-window.VescoMotorista={load,copyCurrentLink,iniciarLocalizacao,pausarLocalizacao,finalizarRota,enviarLocalizacaoAtual,pedirLocalizacaoObrigatoria,garantirLocalizacaoParaEntrega,debug:()=>({rota,token:token?'ok':'',offline:state.offline,geoTracking,geoPermissionBlocked,geoSendTimer:!!geoSendTimer,lastLocation,state})};
+window.VescoMotorista={load,copyCurrentLink,iniciarLocalizacao,pausarLocalizacao,finalizarRota,enviarLocalizacaoAtual,pedirLocalizacaoObrigatoria,garantirLocalizacaoParaEntrega,debug:()=>({rota,token:token?'ok':'',offline:state.offline,geoTracking,geoPermissionBlocked,geoSendTimer:!!geoSendTimer,pending:pendingCount(),routeComplete:routeComplete(),lastLocation,state})};
 load();
 </script>
 </body>
