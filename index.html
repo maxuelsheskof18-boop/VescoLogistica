@@ -28,8 +28,8 @@
   />
 
   <!-- Arquivos visuais locais. -->
-  <link rel="stylesheet" href="styles.css?v=1029" />
-  <link rel="stylesheet" href="vesco-v8-operacional.css?v=1029" />
+  <link rel="stylesheet" href="styles.css?v=1031" />
+  <link rel="stylesheet" href="vesco-v8-operacional.css?v=1031" />
 
   <style>
     html,
@@ -148,8 +148,8 @@
   </noscript>
 
   <script>
-    window.VESCO_BUILD_VERSION = "V10.29-MAPA";
-    window.VESCO_INDEX_VERSION = "index-v10.28-realtime";
+    window.VESCO_BUILD_VERSION = "V10.31-ERP-REALTIME";
+    window.VESCO_INDEX_VERSION = "index-v10.31-erp-realtime";
 
     // API principal do painel ERP/logística.
     window.VESCO_API_URL =
@@ -165,7 +165,7 @@
       console.error("VESCO GlobalError:", event.error || event.message || event);
 
       var box = document.getElementById("vescoBootError");
-      if (box && !(window.VescoV8 && window.VescoV8.__v1029)) {
+      if (box && !(window.VescoV8 && window.VescoV8.__v1031)) {
         box.style.display = "block";
         box.textContent =
           "Erro ao carregar o painel: " +
@@ -179,7 +179,7 @@
   </script>
 
   <!--
-    ORDEM OBRIGATÓRIA V10.29:
+    ORDEM OBRIGATÓRIA V10.30:
     1. Configuração/SDK Firebase
     2. Leaflet
     3. Núcleo operacional
@@ -187,13 +187,13 @@
 
     Não carregue junto modulo.rotas.js, V7, V7.2, V9 ou outro núcleo V10 antigo.
   -->
-  <script src="firebase-config.js?v=1029"></script>
+  <script src="firebase-config.js?v=1031"></script>
   <script
     src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
     crossorigin=""
   ></script>
-  <script src="modulo.vesco-v8-operacional.js?v=1029"></script>
-  <script src="vesco-firebase-realtime.js?v=1029"></script>
+  <script src="modulo.vesco-v8-operacional.js?v=1031"></script>
+  <script src="vesco-firebase-realtime.js?v=1031"></script>
 
   <script>
     (function () {
@@ -223,14 +223,17 @@
       }
 
       function checkReady() {
-        if (window.VescoV8 && window.VescoV8.__v1029) {
+        if (window.VescoV8 && window.VescoV8.__v1031) {
           hideBoot();
-          console.log(
-            "VESCO index V10.29 Mapa Estável carregado com sucesso.",
-            window.VescoV8.realtimeStatus
-              ? window.VescoV8.realtimeStatus()
-              : "realtime iniciando"
-          );
+          console.log("VESCO index V10.31 ERP Realtime carregado com sucesso.");
+          setTimeout(function(){
+            console.log(
+              "VESCO Realtime status após inicialização:",
+              window.VescoV8.realtimeStatus
+                ? window.VescoV8.realtimeStatus()
+                : "realtime indisponível"
+            );
+          }, 1600);
           return true;
         }
 
@@ -250,15 +253,15 @@
           if (tries >= MAX_TRIES) {
             clearInterval(timer);
 
-            if (window.VescoV8 && !window.VescoV8.__v1029) {
+            if (window.VescoV8 && !window.VescoV8.__v1031) {
               bootError(
-                "O navegador carregou um módulo operacional antigo. Pressione Ctrl + F5 e confirme que o arquivo modulo.vesco-v8-operacional.js está publicado como V10.29."
+                "O navegador carregou um módulo operacional antigo. Pressione Ctrl + F5 e confirme que o arquivo modulo.vesco-v8-operacional.js está publicado como V10.30."
               );
               return;
             }
 
             bootError(
-              "O módulo V10.29 não iniciou. Confirme no GitHub/Vercel os arquivos modulo.vesco-v8-operacional.js e vesco-firebase-realtime.js."
+              "O módulo V10.30 não iniciou. Confirme no GitHub/Vercel os arquivos modulo.vesco-v8-operacional.js e vesco-firebase-realtime.js."
             );
           }
         }, INTERVAL_MS);
@@ -271,7 +274,7 @@
           index: window.VESCO_INDEX_VERSION,
           build: window.VESCO_BUILD_VERSION,
           VescoV8: !!core,
-          v1029: !!(core && core.__v1029),
+          v1031: !!(core && core.__v1031),
           realtime:
             core && typeof core.realtimeStatus === "function"
               ? core.realtimeStatus()

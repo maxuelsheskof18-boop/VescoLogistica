@@ -1,8 +1,8 @@
-// modulo.vesco-v8-operacional.js — V10.29 MAPA ESTÁVEL + REALTIME OPERACIONAL
+// modulo.vesco-v8-operacional.js — V10.30 MAPA SEGURO + REALTIME OPERACIONAL
 // Correções: Flex sem ERP, logística sem entregues, faturamento mensal com seletor de mês, coordenadas sem inversão.
 
 (function(){
-  if (window.VescoV8 && window.VescoV8.__v1029) return;
+  if (window.VescoV8 && window.VescoV8.__v1030) return;
 
   const API_MAIN = window.VESCO_API_URL || "https://script.google.com/macros/s/AKfycbxEzbxBABMDwi7B7tn_1p-lC0vc50JjHFOrH3w42Oog2-5R2-WMYSrQ27ED7wduJUN6/exec";
   const API_FLEX = window.VESCO_API_FLEX_URL || "https://script.google.com/macros/s/AKfycbzDp2qs2S_MxDc_3afY1TurNKYEwfYKkk2cc4IliNxLiVaJuSKYyRqofOUMnhdFBjwNwg/exec";
@@ -22,6 +22,7 @@
     mapUserInteracted: {},
     mapResizeObservers: {},
     mapProgrammaticUntil: {},
+    mapInteractionUntil: {},
     lastPayload: null,
     lastFlexPayload: null,
     lastFlexRawCount: 0,
@@ -49,6 +50,9 @@
     realtimeRenderTimer: null,
     realtimeLastAt: "",
     realtimeLastReason: "",
+    erpSignalLastVersion: "",
+    erpSignalBusy: false,
+    erpSignalTimer: null,
     lastDeliveredRefreshAt: 0,
     rotasCriadasCollapsed: localStorage.getItem("vesco:v1021:rotasCollapsed")!=="0",
     sidebarCollapsed: localStorage.getItem("vesco:v8:sidebarCollapsed")==="1"
@@ -568,7 +572,7 @@
   }
   function snapshotFromState(){
     return {
-      version:"V10.29",
+      version:"V10.31",
       date:state.date,
       month:state.month,
       updated_at:new Date().toISOString(),
@@ -2081,16 +2085,27 @@ function fastRouteLink(rota, opts={}){
     state.realtimeLastReason=reason||"firebase";
     state.realtimeLastAt=new Date().toISOString();
     clearTimeout(state.realtimeRenderTimer);
-    state.realtimeRenderTimer=setTimeout(()=>{
+
+    const run=()=>{
+      // Enquanto o operador está usando roda/arraste, não destrói o mapa.
+      // Isso evita o erro interno do Leaflet em setZoomAround/_leaflet_pos.
+      const interactionUntil=Math.max(0,...Object.values(state.mapInteractionUntil||{}).map(Number).filter(Number.isFinite));
+      if(Date.now()<interactionUntil){
+        state.realtimeRenderTimer=setTimeout(run,Math.max(120,interactionUntil-Date.now()+80));
+        return;
+      }
+
       state.realtimeRenderTimer=null;
       updateBadges();
       if(document.hidden) return;
       // Não fecha modal de edição enquanto outro operador altera um pedido.
       if(routeEditDraft || document.querySelector("#v95ShareModal.open, #v92PedidoModal.open")) return;
       const ui=captureRealtimeUi();
-      try{ render(); }catch(e){ console.warn("V10.29: render realtime contornado.",e.message||e); }
+      try{ render(); }catch(e){ console.warn("V10.30: render realtime contornado.",e.message||e); }
       restoreRealtimeUi(ui);
-    },140);
+    };
+
+    state.realtimeRenderTimer=setTimeout(run,180);
   }
   function applyRealtimeOrderPatches(patches){
     patches=patches&&typeof patches==="object"?patches:{};
@@ -2111,17 +2126,38 @@ function fastRouteLink(rota, opts={}){
     saveLocalSnapshot(snapshotFromState());
     scheduleRealtimeRender("rotas_entregas");
   }
+  function erpSignalVersion(signal){
+    signal=signal&&typeof signal==="object"?signal:{};
+    return txt(signal.version||signal.ts||signal.updated_at||"");
+  }
+  function handleErpRefreshSignal(signal){
+    const version=erpSignalVersion(signal);
+    if(!version || version===state.erpSignalLastVersion) return;
+    state.erpSignalLastVersion=version;
+    clearTimeout(state.erpSignalTimer);
+    state.erpSignalTimer=setTimeout(async()=>{
+      if(state.erpSignalBusy) return;
+      state.erpSignalBusy=true;
+      try{
+        await refreshFromAppsScriptBackground();
+        scheduleRealtimeRender("erp_novo_pedido");
+      }catch(e){console.warn("V10.31: refresh ERP por sinal falhou.",e.message||e);}
+      finally{state.erpSignalBusy=false;}
+    },120);
+  }
   function startRealtimeFallback(){
     if(state.realtimeFallbackTimer) return;
     const tick=async()=>{
       try{
-        const [patches,routes]=await Promise.all([
+        const [patches,routes,erpSignal]=await Promise.all([
           firebaseGet("vesco_operacao/orders",5000),
-          firebaseGet("vesco_rotas_motorista",5000)
+          firebaseGet("vesco_rotas_motorista",5000),
+          firebaseGet("vesco_sinais/erp_refresh",5000)
         ]);
         applyRealtimeOrderPatches(patches||{});
         applyRealtimeRoutes(routes||{});
-      }catch(e){ console.warn("V10.29: fallback realtime indisponível.",e.message||e); }
+        handleErpRefreshSignal(erpSignal||{});
+      }catch(e){ console.warn("V10.30: fallback realtime indisponível.",e.message||e); }
     };
     state.realtimeFallbackTimer=setInterval(tick,8000);
     tick();
@@ -2145,18 +2181,21 @@ function fastRouteLink(rota, opts={}){
         const db=window.firebase.database(app);
         const ordersRef=db.ref("vesco_operacao/orders");
         const routesRef=db.ref("vesco_rotas_motorista");
+        const erpSignalRef=db.ref("vesco_sinais/erp_refresh");
         const ordersCb=snap=>applyRealtimeOrderPatches(snap.val()||{});
         const routesCb=snap=>applyRealtimeRoutes(snap.val()||{});
-        ordersRef.on("value",ordersCb,err=>console.warn("V10.29: listener pedidos falhou.",err?.message||err));
-        routesRef.on("value",routesCb,err=>console.warn("V10.29: listener rotas falhou.",err?.message||err));
+        const erpSignalCb=snap=>handleErpRefreshSignal(snap.val()||{});
+        ordersRef.on("value",ordersCb,err=>console.warn("V10.30: listener pedidos falhou.",err?.message||err));
+        routesRef.on("value",routesCb,err=>console.warn("V10.31: listener rotas falhou.",err?.message||err));
+        erpSignalRef.on("value",erpSignalCb,err=>console.warn("V10.31: listener sinal ERP falhou.",err?.message||err));
         state.realtimeDb=db;
-        state.realtimeRefs={orders:{ref:ordersRef,cb:ordersCb},routes:{ref:routesRef,cb:routesCb}};
+        state.realtimeRefs={orders:{ref:ordersRef,cb:ordersCb},routes:{ref:routesRef,cb:routesCb},erpSignal:{ref:erpSignalRef,cb:erpSignalCb}};
         state.realtimeAttached=true;
         if(state.realtimeFallbackTimer){clearInterval(state.realtimeFallbackTimer);state.realtimeFallbackTimer=null;}
-        console.log("VESCO V10.29 realtime ativo: pedidos, rotas, entregas e mapa estável.");
+        console.log("VESCO V10.30 realtime ativo: pedidos, rotas, entregas e mapa estável.");
         return {ok:true,mode:"firebase"};
       }catch(e){
-        console.warn("V10.29: Firebase compat não iniciou; usando fallback de 8s.",e.message||e);
+        console.warn("V10.30: Firebase compat não iniciou; usando fallback de 8s.",e.message||e);
       }
     }
     startRealtimeFallback();
@@ -3895,19 +3934,74 @@ function render(){
     `;
     document.head.appendChild(style);
   }
+  function disposeMapSafely(type,map){
+    if(!map) return;
+    rememberMapView(type,map);
+    try{ state.mapResizeObservers[type]?.disconnect?.(); }catch(e){}
+
+    // Cancela qualquer zoom atrasado do Leaflet antes de remover o DOM.
+    // O ScrollWheelZoom nativo usa setTimeout; se o mapa for removido antes,
+    // ocorre: Cannot read properties of undefined (reading '_leaflet_pos').
+    try{
+      const wheel=map.scrollWheelZoom;
+      if(wheel){
+        if(wheel._timer){ clearTimeout(wheel._timer); wheel._timer=null; }
+        wheel._delta=0;
+        wheel._lastMousePos=null;
+        wheel.disable?.();
+      }
+    }catch(e){}
+
+    try{
+      if(map.__vescoWheelHandler && map.getContainer){
+        map.getContainer()?.removeEventListener('wheel',map.__vescoWheelHandler,{passive:false});
+      }
+    }catch(e){}
+    try{ if(map.__vescoWheelRaf) cancelAnimationFrame(map.__vescoWheelRaf); }catch(e){}
+    try{ if(map.__vescoWheelTimer) clearTimeout(map.__vescoWheelTimer); }catch(e){}
+
+    try{ map.stop?.(); }catch(e){}
+    try{ map.off?.(); }catch(e){}
+    try{ map.remove(); }catch(e){}
+  }
   function closeMaps(){
-    Object.keys(state.maps).forEach(k=>{
-      const map=state.maps[k];
-      rememberMapView(k,map);
-      try{ state.mapResizeObservers[k]?.disconnect?.(); }catch(e){}
-      try{ map.remove(); }catch(e){}
-    });
+    Object.keys(state.maps).forEach(k=>disposeMapSafely(k,state.maps[k]));
     state.maps={};
     state.layers={};
     state.mapResizeObservers={};
     state.markers={logistica:{},flex:{}};
   }
   function mapIcon(type,label){ return L.divIcon({className:"",html:`<div class="v8-marker ${type==="flex"?"flex":""}">${label}</div>`,iconSize:[31,31],iconAnchor:[15,15]}); }
+  function installStableWheelZoom(type,map,el){
+    if(!map || !el || map.__vescoStableWheelInstalled) return;
+    map.__vescoStableWheelInstalled=true;
+    let lastAt=0;
+
+    const handler=ev=>{
+      if(!map || map._removed || !map._loaded || !map._mapPane || !document.body.contains(el)) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const now=performance.now();
+      if(now-lastAt<38) return;
+      lastAt=now;
+      state.mapInteractionUntil[type]=Date.now()+650;
+
+      const dir=ev.deltaY<0?1:-1;
+      const current=Number(map.getZoom());
+      const target=Math.max(map.getMinZoom(),Math.min(map.getMaxZoom(),current+(dir*0.5)));
+      if(target===current) return;
+
+      try{
+        const point=map.mouseEventToContainerPoint(ev);
+        map.setZoomAround(point,target);
+      }catch(e){
+        try{ map.setZoom(target,{animate:false}); }catch(_){}
+      }
+    };
+
+    map.__vescoWheelHandler=handler;
+    el.addEventListener('wheel',handler,{passive:false});
+  }
   function ensureMap(type){
     if(typeof L==="undefined") return null;
     installMapInteractionCss();
@@ -3923,7 +4017,7 @@ function render(){
     const map=L.map(el,{
       preferCanvas:true,
       zoomControl:true,
-      scrollWheelZoom:true,
+      scrollWheelZoom:false,
       doubleClickZoom:true,
       touchZoom:true,
       boxZoom:true,
@@ -3941,10 +4035,10 @@ function render(){
 
     map.__vescoHadSavedView=!!saved;
     map.__vescoMemoryEnabled=!!saved;
-    try{map.scrollWheelZoom.enable();}catch(e){}
     try{map.doubleClickZoom.enable();}catch(e){}
     try{map.touchZoom.enable();}catch(e){}
     try{map.dragging.enable();}catch(e){}
+    installStableWheelZoom(type,map,el);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
       maxZoom:19,
@@ -3956,13 +4050,16 @@ function render(){
     }).addTo(map);
 
     map.on("zoomstart movestart",()=>{
+      state.mapInteractionUntil[type]=Date.now()+700;
       if(Date.now()>(state.mapProgrammaticUntil[type]||0)){
         state.mapUserInteracted[type]=true;
         map.__vescoMemoryEnabled=true;
         map.__vescoHadSavedView=true;
       }
     });
+    map.on("zoom move",()=>{ state.mapInteractionUntil[type]=Date.now()+280; });
     map.on("zoomend moveend",()=>{
+      state.mapInteractionUntil[type]=Date.now()+180;
       if(map.__vescoMemoryEnabled) rememberMapView(type,map);
     });
 
@@ -4120,14 +4217,17 @@ function renderMap(type,forceFit=false,listOverride=null){
       }catch(e){}
     },110);
 
-    map.on("zoomend",()=>{
-      const box=document.getElementById(`v8-map-${type}-stats`);
-      if(!box) return;
-      const z=map.getZoom();
-      const old=box.querySelector("[data-vesco-zoom]");
-      if(old) old.textContent=`Zoom: ${z}`;
-      else box.insertAdjacentHTML("beforeend",`<span data-vesco-zoom>Zoom: ${z}</span>`);
-    });
+    if(!map.__vescoZoomStatsBound){
+      map.__vescoZoomStatsBound=true;
+      map.on("zoomend",()=>{
+        const box=document.getElementById(`v8-map-${type}-stats`);
+        if(!box) return;
+        const z=map.getZoom();
+        const old=box.querySelector("[data-vesco-zoom]");
+        if(old) old.textContent=`Zoom: ${z}`;
+        else box.insertAdjacentHTML("beforeend",`<span data-vesco-zoom>Zoom: ${z}</span>`);
+      });
+    }
 
     if(type==="logistica" && plotted.length){
       setTimeout(()=>drawRouteDirections(type,map,state.layers[type],list),180);
@@ -4218,7 +4318,7 @@ function renderMap(type,forceFit=false,listOverride=null){
   async function go(tab){ state.tab=tab; await ensureData(); render(); }
   function interceptOldClicks(){ document.addEventListener("click",e=>{ const btn=e.target.closest?.("[data-v7tab], [data-v8tab], #v7Sidebar button, .tab-nav button"); if(!btn)return; const label=norm(btn.dataset.v7tab||btn.dataset.v8tab||btn.textContent||""); const map={"dashboard":"dashboard","separacao":"separacao","separados hoje":"separados","separados":"separados","logistica":"logistica","logistica erp":"logistica","logística":"logistica","pronto para envio":"saiu","retiradas":"retiradas","tarefas frota":"tarefas","tarefas":"tarefas","frota":"tarefas","envios flex":"flex","flex":"flex","entregues":"entregues"}; const tab=map[label]||(label.includes("separados")?"separados":label.includes("log")?"logistica":label.includes("flex")?"flex":""); if(tab){e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); go(tab);}},true); }
   async function init(){ state.tarefas=loadTarefas(); autoCleanFlexStorageV87(); layout(); interceptOldClicks(); window.focusOrderOnMap=id=>focus("logistica",id); window.focusFlexOnMap=id=>focus("flex",id); await loadData(true); startRealtimeSync(); render(); }
-  window.VescoV8={__v82:true,__v821:true,__v84:true,__v86:true,__v861:true,__v87:true,__v871:true,__v872:true,__v873:true,__v874:true,__v875:true,__v876:true,__v90:true,__v91:true,__v92:true,__v921:true,__v922:true,__v93:true,__v94:true,__v95:true,__v100:true,__v101:true,__v102:true,__v103:true,__v104:true,__v105:true,__v106:true,__v107:true,__v108:true,__v109:true,__v1010:true,__v1011:true,__v1012:true,__v1013:true,__v1014:true,__v1015:true,__v1016:true,__v1017:true,__v1018:true,__v1019:true,__v1020:true,__v1021:true,__v1027:true,__v1028:true,__v1029:true,state,init,go,
+  window.VescoV8={__v82:true,__v821:true,__v84:true,__v86:true,__v861:true,__v87:true,__v871:true,__v872:true,__v873:true,__v874:true,__v875:true,__v876:true,__v90:true,__v91:true,__v92:true,__v921:true,__v922:true,__v93:true,__v94:true,__v95:true,__v100:true,__v101:true,__v102:true,__v103:true,__v104:true,__v105:true,__v106:true,__v107:true,__v108:true,__v109:true,__v1010:true,__v1011:true,__v1012:true,__v1013:true,__v1014:true,__v1015:true,__v1016:true,__v1017:true,__v1018:true,__v1019:true,__v1020:true,__v1021:true,__v1027:true,__v1028:true,__v1029:true,__v1030:true,__v1031:true,state,init,go,
     openFlexMonth:async(month)=>{state.month=month||state.month; const m=document.getElementById("v8Month"); if(m)m.value=state.month; await loadData(true); renderFlex();},
     saveFlexMonthNow:()=>{const saved=saveStoredFlex(flexList(),state.month); alert(saved.saved?`Mês armazenado: ${monthLabel(saved.month)} — ${saved.total} pedido(s).`:`Nada novo para armazenar em ${monthLabel(saved.month)}.`); renderFlex(); return saved;},
     refreshFlexOnly:async()=>{await loadData(true); saveStoredFlex(state.flex,state.month); renderFlex();},
@@ -4230,9 +4330,9 @@ function renderMap(type,forceFit=false,listOverride=null){
     runFlexGeocode,statusFlexGeocode,autoGeocodeMap,geocodeAddressViaFlexApi,openMapForOrder,openGoogleMapsForList,googleMapsDirectionsUrlFromOrders,
     renderTarefasFrota,registrarTarefaFrota,concluirTarefaFrota,removerTarefaFrota,tarefasFrotaList,
     sidebar:()=>{state.sidebarCollapsed=!state.sidebarCollapsed; document.body.classList.toggle("v8-sidebar-collapsed",state.sidebarCollapsed); localStorage.setItem("vesco:v8:sidebarCollapsed",state.sidebarCollapsed?"1":"0");},
-    today:async()=>{state.date=todayISO(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; await loadData(true); render();},refresh:async()=>{await loadData(true); render();},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,definirOperador,operadorAtual,produtosText,pagamentoText,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{linhaAoVivoMultipontos:true,statusRealtimeFix:true,retiradaRecebedorFix:true,rotaCalculadaFix:true,entreguesComprovantesFix:true,entreguesFirebaseDireto:true,leituraInteligenteV1019:true,realtimeInstantaneo:true,retiradaInteligente:true,firebaseLimpoV1020:true,semPedidoFantasma:true,realtimeLimitado:true,retiradaOlistV1021:true,rotasRecolhiveis:true,botaoMapaPedido:true,version:"V10.29",realtime:realtimeStatus(),date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
+    today:async()=>{state.date=todayISO(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; await loadData(true); render();},refresh:async()=>{await loadData(true); render();},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,definirOperador,operadorAtual,produtosText,pagamentoText,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{linhaAoVivoMultipontos:true,statusRealtimeFix:true,retiradaRecebedorFix:true,rotaCalculadaFix:true,entreguesComprovantesFix:true,entreguesFirebaseDireto:true,leituraInteligenteV1019:true,realtimeInstantaneo:true,retiradaInteligente:true,firebaseLimpoV1020:true,semPedidoFantasma:true,realtimeLimitado:true,retiradaOlistV1021:true,rotasRecolhiveis:true,botaoMapaPedido:true,version:"V10.31",realtime:realtimeStatus(),date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",init); else init();
-  console.log("VESCO V10.29 ativo — mapa estável, zoom suave e realtime sem resetar a visão.");
+  console.log("VESCO V10.31 ativo — ERP novo em tempo real, mapa seguro e rotas preservadas.");
 })();
 // modulo.pronto-flex-fix-v1.js — V1.0
 // Correção isolada para "Pronto para Envio":
