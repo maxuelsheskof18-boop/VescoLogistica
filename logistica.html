@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#071426" />
+  <meta name="description" content="VESCO CONTROL — Logística Inteligente" />
+  <title>VESCO CONTROL — Logística Inteligente</title>
+
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
+  <link rel="preconnect" href="https://unpkg.com" crossorigin />
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+
+  <link rel="stylesheet" href="styles.css?v=10211" />
+  <link rel="stylesheet" href="vesco-v8-operacional.css?v=10211" />
+
+  <style>
+    html,body{margin:0;min-height:100%;background:#eaf2fb;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
+    #vescoBoot{position:fixed;inset:0;z-index:999999;display:grid;place-items:center;background:radial-gradient(circle at 20% 10%,rgba(34,211,238,.18),transparent 32%),radial-gradient(circle at 90% 0%,rgba(37,99,235,.15),transparent 34%),linear-gradient(135deg,#071426,#0b1f3a);color:#fff}
+    .vesco-boot-card{width:min(420px,calc(100vw - 32px));border-radius:24px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);box-shadow:0 28px 80px rgba(0,0,0,.28);padding:28px;text-align:center;backdrop-filter:blur(14px)}
+    .vesco-boot-logo{width:58px;height:58px;margin:0 auto 14px;display:grid;place-items:center;border-radius:18px;background:linear-gradient(135deg,#22d3ee,#1769ff);font-weight:1000;font-size:28px;box-shadow:0 18px 38px rgba(23,105,255,.35)}
+    .vesco-boot-card h1{margin:0;font-size:20px;letter-spacing:-.02em}
+    .vesco-boot-card p{margin:8px 0 0;color:#cbd5e1;font-weight:700;font-size:13px}
+    .vesco-boot-loader{width:100%;height:10px;margin-top:20px;border-radius:999px;overflow:hidden;background:rgba(255,255,255,.12)}
+    .vesco-boot-loader span{display:block;height:100%;width:42%;border-radius:inherit;background:linear-gradient(90deg,#22d3ee,#22c55e,#1769ff);animation:vescoBoot 1.15s infinite ease-in-out}
+    @keyframes vescoBoot{0%{transform:translateX(-110%)}100%{transform:translateX(260%)}}
+    .vesco-boot-error{margin-top:16px;padding:12px;border-radius:14px;display:none;background:rgba(239,68,68,.14);border:1px solid rgba(248,113,113,.38);color:#fecaca;text-align:left;font-size:12px;line-height:1.45;font-weight:700}
+  </style>
+</head>
+
+<body>
+  <div id="vescoBoot">
+    <div class="vesco-boot-card">
+      <div class="vesco-boot-logo">V</div>
+      <h1>VESCO CONTROL</h1>
+      <p>Carregando logística inteligente em tempo real...</p>
+      <div class="vesco-boot-loader"><span></span></div>
+      <div id="vescoBootError" class="vesco-boot-error"></div>
+    </div>
+  </div>
+
+  <noscript>
+    <div style="padding:24px;font-family:Arial,sans-serif">
+      Para usar o VESCO CONTROL, ative o JavaScript no navegador.
+    </div>
+  </noscript>
+
+  <script>
+    window.VESCO_BUILD_VERSION = "V10.21.1-FLEX-MIRROR";
+    window.VESCO_INDEX_VERSION = "index-v10.21.1-flex-mirror";
+    window.VESCO_API_URL = window.VESCO_API_URL || "https://script.google.com/macros/s/AKfycbxEzbxBABMDwi7B7tn_1p-lC0vc50JjHFOrH3w42Oog2-5R2-WMYSrQ27ED7wduJUN6/exec";
+    window.VESCO_API_FLEX_URL = window.VESCO_API_FLEX_URL || "https://script.google.com/macros/s/AKfycbyJXPpN3D8yrcRb0LCy8CY8vegzzF-vKkj7YPmx8WVGouAhBvj_5D_qxhSfyIYTacL1/exec";
+
+    window.addEventListener("error", function(ev){
+      console.error("VESCO GlobalError:", ev.error || ev.message || ev);
+      var box = document.getElementById("vescoBootError");
+      if (box && !window.VescoV8) {
+        box.style.display = "block";
+        box.textContent = "Erro ao carregar o painel: " + (ev.message || "verifique o console.");
+      }
+    });
+
+    window.addEventListener("unhandledrejection", function(ev){
+      console.error("VESCO PromiseError:", ev.reason || ev);
+    });
+  </script>
+
+  <script src="firebase-config.js?v=10211"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="modulo.vesco-v8-operacional.js?v=10211"></script>
+  <script src="vesco-firebase-realtime.js?v=10211"></script>
+
+  <script>
+    (function(){
+      function hideBoot(){
+        var boot = document.getElementById("vescoBoot");
+        if (!boot) return;
+        boot.style.opacity = "0";
+        boot.style.pointerEvents = "none";
+        boot.style.transition = "opacity .22s ease";
+        setTimeout(function(){ boot.remove(); }, 260);
+      }
+
+      function checkReady(){
+        if (window.VescoV8 && window.VescoV8.__v1021) {
+          hideBoot();
+          console.log("VESCO index V10.21.1 Flex Mirror carregado com sucesso.");
+          return true;
+        }
+        return false;
+      }
+
+      if (!checkReady()) {
+        var tries = 0;
+        var timer = setInterval(function(){
+          tries++;
+          if (checkReady() || tries > 80) {
+            clearInterval(timer);
+            if (!window.VescoV8) {
+              var box = document.getElementById("vescoBootError");
+              if (box) {
+                box.style.display = "block";
+                box.textContent = "O módulo V10.21 não iniciou. Confirme se modulo.vesco-v8-operacional.js está no GitHub/Vercel.";
+              }
+            }
+          }
+        }, 250);
+      }
+
+      window.VESCO_DEBUG = function(){
+        return {
+          index: window.VESCO_INDEX_VERSION,
+          build: window.VESCO_BUILD_VERSION,
+          VescoV8: !!window.VescoV8,
+          debug: window.VescoV8 && window.VescoV8.debug ? window.VescoV8.debug() : null
+        };
+      };
+    })();
+  </script>
+</body>
+</html>

@@ -1,8 +1,8 @@
-// painel_motorista_link_v23.js — Gerador de link motorista com rota offline
+// painel_motorista_link_v22.js — Gerador de link isolado para motorista externo
 // Adicione depois do app.js no logistica.html.
 (function(){
-  if(window.__vescoPainelMotoristaLinkV23) return;
-  window.__vescoPainelMotoristaLinkV23 = true;
+  if(window.__vescoPainelMotoristaLinkV22) return;
+  window.__vescoPainelMotoristaLinkV22 = true;
 
   const API = window.VESCO_API_URL || 'https://script.google.com/macros/s/AKfycbxEzbxBABMDwi7B7tn_1p-lC0vc50JjHFOrH3w42Oog2-5R2-WMYSrQ27ED7wduJUN6/exec';
   const STORAGE_KEY = 'vesco_saiu_rotas_v1';
@@ -21,35 +21,7 @@
   function findRota(id){ return getRotas().find(r => String(r.id) === String(id)); }
   function token(){ return Math.random().toString(36).slice(2,8).toUpperCase() + Date.now().toString(36).toUpperCase().slice(-4); }
   function motoristaBaseUrl(){ return new URL('motorista.html', window.location.href).toString(); }
-  function encodePayload(obj){
-    try{
-      return btoa(unescape(encodeURIComponent(JSON.stringify(obj||{}))))
-        .replace(/\+/g,'-')
-        .replace(/\//g,'_')
-        .replace(/=+$/,'');
-    }catch(e){ return ''; }
-  }
-  function routePayload(rota){
-    return {
-      offline:true,
-      id: rota.id || rota.rota_id || '',
-      token: rota.motorista_token || rota.token || '',
-      nome: rota.nome || rota.nome_rota || 'Rota',
-      motorista: rota.motorista || '',
-      origem: rota.origem || '',
-      pedidos: rota.pedidos || [],
-      paradas: rota.paradas || []
-    };
-  }
-  function buildLink(rota){
-    const url = new URL(motoristaBaseUrl());
-    url.searchParams.set('rota', rota.id || rota.rota_id || '');
-    url.searchParams.set('token', rota.motorista_token || rota.token || '');
-    url.searchParams.set('api', API);
-    const data = encodePayload(routePayload(rota));
-    if(data) url.searchParams.set('data', data);
-    return url.toString();
-  }
+  function buildLink(rota){ return motoristaBaseUrl() + '?rota=' + encodeURIComponent(rota.id) + '&token=' + encodeURIComponent(rota.motorista_token || ''); }
 
   function jsonp(action, data={}){
     return new Promise((resolve,reject)=>{
@@ -142,15 +114,15 @@
       const box = document.createElement('div');
       box.className = 'vesco-link-motorista-v22 mt-2 flex flex-wrap gap-2 justify-end';
       box.innerHTML = `
-        <button type="button" class="bg-slate-900 text-white px-3 py-1 rounded text-xs font-bold" onclick="window.vescoCriarLinkMotoristaV23('${esc(id)}')">Link Motorista</button>
+        <button type="button" class="bg-slate-900 text-white px-3 py-1 rounded text-xs font-bold" onclick="window.vescoCriarLinkMotoristaV22('${esc(id)}')">Link Motorista</button>
         ${rota.motorista_link ? `<a target="_blank" class="bg-blue-600 text-white px-3 py-1 rounded text-xs font-bold" href="${esc(rota.motorista_link)}">Abrir App</a>` : ''}
       `;
       card.appendChild(box);
     });
   }
 
-  window.vescoCriarLinkMotoristaV23 = criarLinkMotorista;
-  window.vescoPainelMotoristaLinkV23 = { injectButtons, criarLinkMotorista, getRotas, copyText, debug:()=>({rotas:getRotas().length, base:motoristaBaseUrl()}) };
+  window.vescoCriarLinkMotoristaV22 = criarLinkMotorista;
+  window.vescoPainelMotoristaLinkV22 = { injectButtons, criarLinkMotorista, getRotas, copyText, debug:()=>({rotas:getRotas().length, base:motoristaBaseUrl()}) };
 
   const prevRenderRotas = window.renderRotas;
   if(typeof prevRenderRotas === 'function') {
@@ -161,5 +133,5 @@
     window.switchTab = function(which){ const r = prevSwitchTab.apply(this, arguments); if(which === 'saiu' || which === 'rotas') setTimeout(injectButtons, 180); return r; };
   }
   document.addEventListener('DOMContentLoaded', ()=>{ setTimeout(injectButtons, 800); try{ new MutationObserver(()=>injectButtons()).observe(document.body, {childList:true, subtree:true}); }catch(e){} });
-  console.log('Painel Motorista Link V23 ativo — gera link com dados offline da rota.');
+  console.log('Painel Motorista Link V22 ativo — gera link isolado por rota.');
 })();

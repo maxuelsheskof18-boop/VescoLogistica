@@ -2807,3 +2807,34 @@ body:not(.v8-sidebar-collapsed) .v8-menu button .v110-menu-ping{
   stroke-linecap:round;
   stroke-linejoin:round;
 }
+
+
+/* ============================================================================
+   VESCO V10.19 — leitura inteligente / realtime instantâneo
+   ============================================================================ */
+.vesco-realtime-toast.done{
+  border-left-color:#22c55e;
+}
+.vesco-realtime-toast.start{
+  border-left-color:#f59e0b;
+}
+.v8-chip.orange{
+  background:#fff7ed !important;
+  color:#c2410c !important;
+}
+
+
+/* VESCO V10.20 — limpeza de linhas fantasma do Firebase */
+.v8-chip.firebase-clean{
+  background:#dcfce7;
+  color:#166534;
+}
+
+/* ============================================================================
+   VESCO V10.21 — Rotas recolhíveis, mapa do pedido e retirada inteligente
+   ============================================================================ */
+.v1021-routes-toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 12px;padding:10px 12px;border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;color:#35506f;font-weight:900}
+.v1021-routes-fade{margin-top:10px;padding:12px;border-radius:14px;background:#f8fafc;border:1px dashed #cbd5e1;color:#64748b;font-weight:900;text-align:center}
+.v1021-action-stack{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.v1021-action-stack .v8-btn{padding:9px 12px;white-space:nowrap}
+@media(max-width:760px){.v1021-routes-toggle{display:grid}.v1021-action-stack{display:grid;grid-template-columns:1fr}}
