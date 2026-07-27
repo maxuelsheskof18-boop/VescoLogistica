@@ -1,50 +1,40 @@
-VESCO CONTROL — V10.28 REALTIME OPERACIONAL
+VESCO CONTROL — MAPA V10.29
 
-ARQUIVOS A SUBSTITUIR NO GITHUB/VERCEL
-1. modulo.vesco-v8-operacional.js
-2. vesco-firebase-realtime.js
+ARQUIVOS PARA SUBSTITUIR
+1. index.html
+2. modulo.vesco-v8-operacional.js
+3. vesco-firebase-realtime.js
 
-NO index.html E logistica.html USE:
-<script src="firebase-config.js?v=1028"></script>
+ORDEM DOS SCRIPTS
+<script src="firebase-config.js?v=1029"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="modulo.vesco-v8-operacional.js?v=1028"></script>
-<script src="vesco-firebase-realtime.js?v=1028"></script>
+<script src="modulo.vesco-v8-operacional.js?v=1029"></script>
+<script src="vesco-firebase-realtime.js?v=1029"></script>
 
-NÃO CARREGUE JUNTO:
-- modulo.rotas.js
-- modulo.vesco-v7-core.js
-- modulo.vesco-v7-2-operacional.js
-- modulo.vesco-v9-operacional.js
-- modulo.vesco-v10-operacional.js
+CORREÇÕES DO MAPA
+- O zoom feito pelo operador não volta sozinho quando chega uma atualização realtime.
+- O centro e o nível de zoom são preservados ao atualizar pedidos e rotas.
+- A roda do mouse usa passos de 0,5 e sensibilidade mais controlada.
+- Arrastar, duplo clique, toque, teclado e caixa de zoom ficam habilitados.
+- Redimensionamentos do painel recalculam o tamanho do Leaflet sem deslocar o mapa.
+- O botão Ajustar continua enquadrando todos os pontos quando o operador solicitar.
+- A abertura inicial enquadra os pinos automaticamente.
+- Ao abrir um pedido, o mapa centraliza no pino com animação e abre o popup.
+- O nível de zoom atual aparece abaixo do mapa.
 
-O QUE ESTA VERSÃO FAZ
-- status alterado por um operador aparece nos outros painéis imediatamente;
-- Em Separação, Separado, Pronto, Entregue e Retirado mudam sem F5;
-- observação, link e pendência também são gravados no Firebase;
-- rotas criadas/editadas/excluídas aparecem instantaneamente;
-- lista Rotas criadas mostra somente as rotas da data selecionada;
-- Pedidos em rota e indicadores usam somente as rotas da data selecionada;
-- Entregues usa a data real da entrega, sem transformar rota antiga em entrega de hoje;
-- remove o loop antigo que repetia “Firebase rotas sincronizadas” e deixava a página pesada;
-- se o SDK realtime não estiver disponível, usa fallback a cada 8 segundos.
+INSTALAÇÃO
+1. Substitua os três arquivos no GitHub/Vercel.
+2. Não carregue modulo.mapas.js, modulo.mapas-lite-v7.js ou outros núcleos antigos junto com o V10.29.
+3. Aguarde o deploy.
+4. Pressione Ctrl + F5.
 
-DEPOIS DO DEPLOY
-1. Aguarde o Vercel concluir.
-2. Pressione Ctrl + F5.
-3. Abra o console e execute:
-   VescoV8.realtimeStatus()
+TESTE
+- Abra Envios Flex.
+- Use a roda do mouse para aproximar.
+- Aguarde uma atualização realtime ou altere um pedido em outro computador.
+- O mapa deve manter exatamente a região e o zoom escolhidos.
+- Clique em Ajustar para voltar a enquadrar todos os pinos.
 
-RESULTADO ESPERADO:
-{
-  attached: true,
-  mode: "firebase",
-  routesToday: ...,
-  deliveredToday: ...
-}
-
-TESTE ENTRE DOIS COMPUTADORES
-1. Abra o painel nos dois.
-2. No primeiro, clique Em Separação ou Separado.
-3. No segundo, o pedido deve mudar de lista sem atualizar a página.
-4. Crie/edite uma rota no primeiro.
-5. A rota deve aparecer no segundo automaticamente.
+CONSOLE ESPERADO
+VESCO V10.29 ativo — mapa estável, zoom suave e realtime sem resetar a visão.
+VESCO index V10.29 Mapa Estável carregado com sucesso.
