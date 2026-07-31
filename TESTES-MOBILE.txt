@@ -1,0 +1,43 @@
+VESCO CONTROL V10.34 — TESTES RESPONSIVOS
+
+Validação executada em navegador Chromium headless com emulação de viewport/touch.
+Não substitui teste em aparelhos físicos, mas valida dimensões, overflow e controles.
+
+RESULTADOS
+- iPhone SE — 375x667:
+  overflow horizontal: 0
+  campos do modal visíveis: 5/5
+  mapa tela cheia: 361x365
+  erros JavaScript: 0
+
+- iPhone 14 Pro Max — 430x932:
+  overflow horizontal: 0
+  campos do modal visíveis: 5/5
+  mapa tela cheia: 416x630
+  erros JavaScript: 0
+
+- Android pequeno — 360x800:
+  overflow horizontal: 0
+  campos do modal visíveis: 5/5
+  mapa tela cheia: 346x498
+  erros JavaScript: 0
+
+- Pixel/Android — 412x915:
+  overflow horizontal: 0
+  campos do modal visíveis: 5/5
+  mapa tela cheia: 398x613
+  erros JavaScript: 0
+
+- Paisagem — 844x390:
+  overflow horizontal: 0
+  campos do modal visíveis: 5/5
+  mapa tela cheia: 519x366
+  erros JavaScript: 0
+
+CORREÇÕES CONFIRMADAS
+- Inputs, selects e textareas visíveis no modal.
+- Fonte de formulário em 16px para impedir zoom automático no iOS.
+- Barra inferior oculta durante modal e mapa.
+- Mapa Flex realmente fixo no viewport.
+- Mapa em paisagem usa layout lateral.
+- Sem corte horizontal nas larguras testadas.

@@ -2309,532 +2309,376 @@ body.vesco-v9 #v8Topbar::after{
 }
 
 
+/* VESCO V10.24 — EasyPanel first */
+.v8-chip.easypanel{
+  background:#dcfce7!important;
+  color:#166534!important;
+}
+
 
 /* ============================================================================
-   VESCO V10.3 — botões separados copiar/WhatsApp
+   VESCO V10.25 — MOBILE REAL + PENDÊNCIA FUNCIONANDO
    ============================================================================ */
-.v8-route-actions .v8-btn.green{
-  background:#22c55e;
-  color:#fff;
+body.v1025-modal-open{
+  overflow:hidden !important;
+  touch-action:none;
 }
+
+#v92PedidoModal{
+  z-index:50000 !important;
+}
+
+#v92PedidoModal.open{
+  display:block !important;
+}
+
+.v92-modal-card{
+  color:#06162b;
+}
+
+.v92-modal-body .v8-input,
+.v92-modal-body textarea,
+.v92-modal-body select,
+.v92-modal-body input{
+  font-size:16px !important;
+}
+
 @media(max-width:760px){
-  .v8-route-actions{
+  html, body{
+    max-width:100vw !important;
+    overflow-x:hidden !important;
+  }
+
+  body.vesco-v9 #v8Main,
+  body.vesco-v9 #v8Content{
+    width:100vw !important;
+    max-width:100vw !important;
+    overflow-x:hidden !important;
+  }
+
+  body.vesco-v9 #v8Content{
+    padding:10px 8px 104px !important;
+  }
+
+  body.vesco-v9 #v8Topbar{
+    position:sticky;
+    top:0;
+    z-index:900;
+    width:100vw !important;
+    max-width:100vw !important;
+    border-bottom:1px solid #dbeafe;
+  }
+
+  body.vesco-v9 .v8-title{
+    min-width:0;
+  }
+
+  body.vesco-v9 .v8-title h1{
+    font-size:18px !important;
+    line-height:1.1;
+  }
+
+  body.vesco-v9 .v8-title small{
+    font-size:10px !important;
+  }
+
+  body.vesco-v9 .v8-top-actions{
+    grid-template-columns:1fr 1fr !important;
+    width:100% !important;
+  }
+
+  body.vesco-v9 #v8Search,
+  body.vesco-v9 #v8Refresh{
+    grid-column:1 / -1 !important;
+  }
+
+  body.vesco-v9 #v8Clock{
+    display:none !important;
+  }
+
+  body.vesco-v9 .v8-kpis{
+    grid-template-columns:1fr 1fr !important;
+    gap:8px !important;
+  }
+
+  body.vesco-v9 .v8-kpi{
+    padding:13px 12px !important;
+    border-radius:16px !important;
+    min-height:92px;
+  }
+
+  body.vesco-v9 .v8-kpi strong{
+    font-size:22px !important;
+  }
+
+  body.vesco-v9 .v9-flow{
+    grid-template-columns:1fr !important;
+    gap:8px !important;
+  }
+
+  body.vesco-v9 .v8-card{
+    border-radius:18px !important;
+    margin-bottom:12px !important;
+  }
+
+  body.vesco-v9 .v8-card-head{
     display:grid !important;
-    grid-template-columns:1fr 1fr;
+    grid-template-columns:1fr !important;
+    gap:10px !important;
   }
-  .v8-route-actions .v8-btn{
-    width:100%;
+
+  body.vesco-v9 .v8-card-actions,
+  body.vesco-v9 .v8-card-actions .v8-btn{
+    width:100% !important;
+  }
+
+  /* Tabela de separação vira card clicável e usável no celular */
+  body.vesco-v9 .v8-table-wrap{
+    overflow:visible !important;
+    max-width:100% !important;
+  }
+
+  body.vesco-v9 .v92-separacao-table,
+  body.vesco-v9 .v92-separacao-table thead,
+  body.vesco-v9 .v92-separacao-table tbody,
+  body.vesco-v9 .v92-separacao-table tr,
+  body.vesco-v9 .v92-separacao-table td{
+    display:block !important;
+    width:100% !important;
+    min-width:0 !important;
+  }
+
+  body.vesco-v9 .v92-separacao-table{
+    border-collapse:separate !important;
+    border-spacing:0 !important;
+    font-size:12px !important;
+  }
+
+  body.vesco-v9 .v92-separacao-table thead{
+    display:none !important;
+  }
+
+  body.vesco-v9 .v92-separacao-table tr{
+    margin:10px 0 !important;
+    padding:12px !important;
+    border:1px solid #dbeafe !important;
+    border-radius:18px !important;
+    background:#fff !important;
+    box-shadow:0 12px 28px rgba(2,6,23,.07) !important;
+  }
+
+  body.vesco-v9 .v92-separacao-table tr.v91-row-pending{
+    border-color:#fecaca !important;
+    background:#fff7f7 !important;
+  }
+
+  body.vesco-v9 .v92-separacao-table td{
+    border:0 !important;
+    padding:7px 0 !important;
+    white-space:normal !important;
+    overflow:visible !important;
+    word-break:break-word !important;
+  }
+
+  body.vesco-v9 .v92-separacao-table td::before{
+    display:block;
+    margin-bottom:3px;
+    color:#64748b;
+    font-size:10px;
+    font-weight:1000;
+    text-transform:uppercase;
+    letter-spacing:.05em;
+  }
+
+  body.vesco-v9 .v92-separacao-table td:nth-child(1)::before{content:"Pedido";}
+  body.vesco-v9 .v92-separacao-table td:nth-child(2)::before{content:"Cliente / endereço / aviso";}
+  body.vesco-v9 .v92-separacao-table td:nth-child(3)::before{content:"Data";}
+  body.vesco-v9 .v92-separacao-table td:nth-child(4)::before{content:"Forma";}
+  body.vesco-v9 .v92-separacao-table td:nth-child(5)::before{content:"Pagamento";}
+  body.vesco-v9 .v92-separacao-table td:nth-child(6)::before{content:"Status";}
+  body.vesco-v9 .v92-separacao-table td:nth-child(7)::before{content:"Ação";}
+
+  body.vesco-v9 .v92-separacao-table .v8-order b,
+  body.vesco-v9 .v92-separacao-table .v8-client b{
+    font-size:13px !important;
+  }
+
+  body.vesco-v9 .v92-separacao-table .v8-client small,
+  body.vesco-v9 .v92-separacao-table .v8-order small{
+    white-space:normal !important;
+    overflow:visible !important;
+    text-overflow:clip !important;
+  }
+
+  body.vesco-v9 .v92-action-row,
+  body.vesco-v9 .v8-row-actions.v92-action-row{
+    display:grid !important;
+    grid-template-columns:1fr 1fr !important;
+    gap:8px !important;
+  }
+
+  body.vesco-v9 .v92-action-row .v8-btn{
+    width:100% !important;
+    min-width:0 !important;
+    min-height:44px !important;
+    padding:11px 8px !important;
+    font-size:12px !important;
+    touch-action:manipulation;
+  }
+
+  /* Modal pendência mobile */
+  #v92PedidoModal.open{
+    position:fixed !important;
+    inset:0 !important;
+    z-index:50000 !important;
+  }
+
+  #v92PedidoModal .v92-modal-backdrop{
+    position:fixed !important;
+    inset:0 !important;
+  }
+
+  #v92PedidoModal .v92-modal-card{
+    position:fixed !important;
+    left:8px !important;
+    right:8px !important;
+    top:8px !important;
+    bottom:8px !important;
+    width:auto !important;
+    max-width:none !important;
+    max-height:none !important;
+    margin:0 !important;
+    border-radius:20px !important;
+    display:flex !important;
+    flex-direction:column !important;
+    overflow:hidden !important;
+  }
+
+  #v92PedidoModal .v92-modal-card header{
+    flex:0 0 auto !important;
+    padding:14px !important;
+  }
+
+  #v92PedidoModal .v92-modal-body{
+    flex:1 1 auto !important;
+    overflow-y:auto !important;
+    -webkit-overflow-scrolling:touch !important;
+    padding:14px !important;
+    gap:10px !important;
+  }
+
+  #v92PedidoModal .v92-modal-card footer{
+    flex:0 0 auto !important;
+    display:grid !important;
+    grid-template-columns:1fr !important;
+    gap:8px !important;
+    padding:12px 14px calc(12px + env(safe-area-inset-bottom)) !important;
+    background:#fff !important;
+  }
+
+  #v92PedidoModal .v92-modal-card footer .v8-btn{
+    width:100% !important;
+    min-height:46px !important;
+  }
+
+  body.vesco-v9 #v8MobileBar{
+    z-index:1200 !important;
   }
 }
 
-
-
-/* ============================================================================
-   VESCO V10.4 — ações diretas de compartilhar rota
-   ============================================================================ */
-.v8-route-actions a.v8-btn.green{
-  background:#22c55e;
-  color:#fff;
-  box-shadow:0 10px 24px rgba(34,197,94,.18);
-}
-.v8-route-actions button[type="button"]{
-  cursor:pointer;
-}
-
-
-
-/* ============================================================================
-   VESCO V10.5 — Operação limpa, badges e dados de separação
-   ============================================================================ */
-.v105-menu-badge{
-  margin-left:auto;
-  min-width:20px;
-  height:20px;
-  padding:0 6px;
-  border-radius:999px;
-  background:#ef4444;
-  color:#fff;
-  display:inline-grid;
-  place-items:center;
-  font-size:10px;
-  font-weight:1000;
-  box-shadow:0 8px 18px rgba(239,68,68,.28);
-}
-body.vesco-v9.v8-sidebar-collapsed .v105-menu-badge{
-  position:absolute;
-  top:-4px;
-  right:-4px;
-  margin:0;
-  border:2px solid #071426;
-}
-.v105-payment{
-  display:inline-flex;
-  align-items:center;
-  gap:5px;
-  margin-top:6px;
-  padding:5px 8px;
-  border-radius:999px;
-  background:#eef6ff;
-  color:#1769ff;
-  font-size:11px;
-  font-style:normal;
-  font-weight:1000;
-  border:1px solid #bfdbfe;
-}
-.v105-products{
-  max-width:420px;
-  white-space:normal;
-  line-height:1.25;
-  font-size:12px;
-  font-weight:850;
-  color:#0f172a;
-}
-.v8-table .v105-products{
-  min-width:260px;
-}
-.v8-page-head p:empty,
-#v8Sub:empty{
-  display:none;
-}
-@media(max-width:760px){
-  .v105-products{max-width:320px}
-}
-
-
-/* ============================================================================
-   VESCO V10.6 — Rastreamento do motorista
-   ============================================================================ */
-.v106-driver-head{
-  border-top:1px solid #eef2f7;
-  margin-top:14px;
-}
-.v106-driver-grid{
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:12px;
-  padding-bottom:10px;
-}
-.v106-driver-card{
-  border:1px solid #dbeafe;
-  background:linear-gradient(180deg,#fff,#f8fbff);
-  border-radius:18px;
-  padding:14px;
-  box-shadow:0 12px 28px rgba(15,23,42,.06);
-}
-.v106-driver-card.missing{
-  border-color:#fed7aa;
-  background:#fffaf3;
-}
-.v106-driver-top{
-  display:flex;
-  justify-content:space-between;
-  align-items:flex-start;
-  gap:10px;
-  margin-bottom:8px;
-}
-.v106-driver-top b{
-  display:block;
-  color:#0f172a;
-  font-size:14px;
-}
-.v106-driver-top small{
-  display:block;
-  color:#64748b;
-  font-weight:850;
-  margin-top:3px;
-}
-.v106-driver-info{
-  display:grid;
-  gap:4px;
-  margin:8px 0 12px;
-  font-size:12px;
-  color:#334155;
-  font-weight:850;
-}
-@media(max-width:980px){
-  .v106-driver-grid{grid-template-columns:1fr}
-}
-
-
-/* ============================================================================
-   VESCO V10.7 — badges vermelhos e entrega Firebase-first
-   ============================================================================ */
-.v8-menu button,
-#v8MobileBar button{
-  position:relative;
-}
-.v105-menu-badge{
-  background:#ef4444 !important;
-  color:#fff !important;
-  min-width:22px !important;
-  height:22px !important;
-  border-radius:999px !important;
-  font-size:11px !important;
-  line-height:1 !important;
-  z-index:5;
-}
-#v8MobileBar .v105-menu-badge{
-  position:absolute;
-  top:2px;
-  right:10px;
-  border:2px solid #071426;
-}
-.v8-menu button.has-v105-badge i{
-  filter:drop-shadow(0 0 6px rgba(239,68,68,.45));
-}
-
-
-/* ============================================================================
-   VESCO V10.8 — Hotfix travamento motorista ao vivo
-   ============================================================================ */
-.v106-driver-live .v8-empty{
-  border:1px dashed #bfdbfe;
-  border-radius:16px;
-  background:#f8fbff;
-}
-
-
-/* ============================================================================
-   VESCO V10.10 — pings vermelhos no menu lateral e mobile
-   ============================================================================ */
-.v8-menu button,
-#v8MobileBar button{
-  position:relative !important;
-}
-
-.v8-menu button .v8-badge,
-#v8MobileBar button .v8-badge,
-.v110-menu-ping{
-  background:#ef4444 !important;
-  color:#fff !important;
-  min-width:22px !important;
-  height:22px !important;
-  padding:0 6px !important;
-  border-radius:999px !important;
-  display:grid;
-  place-items:center;
-  font-size:11px !important;
-  font-weight:1000 !important;
-  line-height:1 !important;
-  box-shadow:0 8px 20px rgba(239,68,68,.35), 0 0 0 3px rgba(239,68,68,.15);
-}
-
-body.v8-sidebar-collapsed .v8-menu button .v8-badge,
-body.v8-sidebar-collapsed .v8-menu button .v110-menu-ping{
-  position:absolute !important;
-  top:-5px !important;
-  right:-5px !important;
-  transform:none !important;
-  margin:0 !important;
-  border:2px solid #071426;
-  z-index:20;
-}
-
-body:not(.v8-sidebar-collapsed) .v8-menu button .v8-badge,
-body:not(.v8-sidebar-collapsed) .v8-menu button .v110-menu-ping{
-  margin-left:auto !important;
-}
-
-#v8MobileBar button .v8-badge,
-#v8MobileBar button .v110-menu-ping{
-  position:absolute !important;
-  top:2px !important;
-  right:8px !important;
-  transform:none !important;
-  border:2px solid #071426;
-  z-index:20;
-}
-
-.v8-menu button.has-v110-ping i,
-#v8MobileBar button.has-v110-ping i{
-  filter:drop-shadow(0 0 8px rgba(239,68,68,.55));
-}
-
-
-/* ============================================================================
-   VESCO V10.11 — Localização obrigatória no app motorista
-   ============================================================================ */
-.v111-location-rule{
-  border-color:#fed7aa !important;
-  background:#fff7ed !important;
-  color:#9a3412 !important;
-}
-
-
-/* ============================================================================
-   VESCO V10.12 — Percurso ao vivo estilo Uber/iFood
-   ============================================================================ */
-.v112-live-map-card{
-  margin-top:14px;
-  border:1px solid #dbeafe;
-  border-radius:20px;
-  background:#fff;
-  overflow:hidden;
-  box-shadow:0 14px 36px rgba(15,23,42,.07);
-}
-.v112-map-head{
-  display:flex;
-  justify-content:space-between;
-  align-items:flex-start;
-  gap:12px;
-  padding:14px 16px;
-  border-bottom:1px solid #eef2f7;
-}
-.v112-map-head h3{
-  margin:0;
-  color:#0f172a;
-}
-.v112-map-head small{
-  display:block;
-  margin-top:3px;
-  color:#64748b;
-  font-weight:850;
-}
-.v112-driver-map{
-  height:430px;
-  width:100%;
-  background:#eaf3ff;
-}
-.v112-driver-marker{
-  width:42px;
-  height:42px;
-  border-radius:999px;
-  display:grid;
-  place-items:center;
-  background:#22c55e;
-  color:#fff;
-  border:4px solid #fff;
-  box-shadow:0 10px 25px rgba(34,197,94,.35);
-  position:relative;
-}
-.v112-driver-marker i{
-  font-size:16px;
-}
-.v112-driver-marker span{
-  position:absolute;
-  right:-8px;
-  top:-8px;
-  min-width:18px;
-  height:18px;
-  padding:0 4px;
-  display:grid;
-  place-items:center;
-  border-radius:999px;
-  background:#0f172a;
-  color:#fff;
-  font-size:10px;
-  font-weight:1000;
-}
-.v112-stop-marker{
-  width:26px;
-  height:26px;
-  border-radius:999px;
-  display:grid;
-  place-items:center;
-  background:#1769ff;
-  color:#fff;
-  border:3px solid #fff;
-  box-shadow:0 8px 18px rgba(23,105,255,.28);
-  font-size:11px;
-  font-weight:1000;
-}
-@media(max-width:760px){
-  .v112-driver-map{height:360px}
-  .v112-map-head{display:grid}
-}
-
-
-/* ============================================================================
-   VESCO V10.13 — Acompanhamento ao vivo estilo iFood/Uber
-   ============================================================================ */
-.v112-live-map-card{
-  border:1px solid #c7d2fe;
-  box-shadow:0 20px 48px rgba(23,105,255,.12);
-}
-.v112-map-head{
-  background:linear-gradient(135deg,#f8fbff,#eef6ff);
-}
-.v112-map-head h3::before{
-  content:"";
-  display:inline-block;
-  width:10px;
-  height:10px;
-  border-radius:999px;
-  background:#22c55e;
-  margin-right:8px;
-  box-shadow:0 0 0 6px rgba(34,197,94,.15);
-}
-.v112-driver-map{
-  height:520px;
-}
-.v112-live-line{
-  stroke:#22c55e !important;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-  filter:drop-shadow(0 0 4px rgba(34,197,94,.32));
-}
-.v112-planned-line{
-  stroke:#1769ff !important;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-}
-.v112-driver-marker{
-  animation:v112MarkerFloat 1.2s ease-in-out infinite alternate;
-}
-.v112-driver-pulse{
-  stroke:#22c55e !important;
-  fill:#22c55e !important;
-  animation:v112Pulse 1.5s ease-out infinite;
-}
-.v112-stop-marker{
-  background:#ef4444;
-}
-@keyframes v112Pulse{
-  0%{opacity:.9;stroke-width:3;r:10}
-  100%{opacity:.05;stroke-width:12;r:28}
-}
-@keyframes v112MarkerFloat{
-  from{transform:translateY(0)}
-  to{transform:translateY(-2px)}
-}
-@media(max-width:760px){
-  .v112-driver-map{height:430px}
-}
-
-
-/* ============================================================================
-   VESCO V10.14 — Linha ao vivo multipontos
-   ============================================================================ */
-.v114-origin-marker{
-  width:34px;
-  height:34px;
-  border-radius:999px;
-  display:grid;
-  place-items:center;
-  background:#0f172a;
-  color:#fff;
-  border:3px solid #fff;
-  box-shadow:0 10px 22px rgba(15,23,42,.28);
-}
-.v114-origin-marker i{
-  font-size:14px;
-}
-.v114-remaining-line{
-  stroke:#f59e0b !important;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-  filter:drop-shadow(0 0 4px rgba(245,158,11,.35));
-}
-.v112-stop-marker{
-  background:#ef4444;
-}
-.v112-stop-marker:has(+ *){
-  background:#ef4444;
-}
-
-
-/* ============================================================================
-   VESCO V10.15 — separado sai da fila + notificações realtime
-   ============================================================================ */
-.vesco-realtime-toasts{
-  position:fixed;
-  right:18px;
-  top:84px;
-  z-index:999999;
-  display:grid;
-  gap:10px;
-  width:min(360px,calc(100vw - 32px));
-  pointer-events:none;
-}
-.vesco-realtime-toast{
-  transform:translateX(24px);
-  opacity:0;
-  transition:.25s ease;
-  border-radius:16px;
-  padding:13px 14px;
-  background:#0f172a;
-  color:#fff;
-  box-shadow:0 18px 40px rgba(15,23,42,.26);
-  border-left:5px solid #1769ff;
-}
-.vesco-realtime-toast.show{
-  transform:translateX(0);
-  opacity:1;
-}
-.vesco-realtime-toast b{
-  display:block;
-  font-size:13px;
-  margin-bottom:4px;
-}
-.vesco-realtime-toast small{
-  display:block;
-  color:#dbeafe;
-  font-weight:800;
-}
-.vesco-realtime-toast.done{border-left-color:#22c55e}
-.vesco-realtime-toast.start{border-left-color:#f59e0b}
-@media(max-width:760px){
-  .vesco-realtime-toasts{
-    left:12px;
-    right:12px;
-    top:72px;
-    width:auto;
+@media(max-width:430px){
+  body.vesco-v9 .v8-kpis{
+    grid-template-columns:1fr !important;
+  }
+  body.vesco-v9 .v92-action-row,
+  body.vesco-v9 .v8-row-actions.v92-action-row{
+    grid-template-columns:1fr !important;
   }
 }
 
 
-/* ============================================================================
-   VESCO V10.16 — Retirada com recebedor + rastreio contínuo
-   ============================================================================ */
-.v111-location-rule{
-  border-color:#bbf7d0 !important;
-  background:#f0fdf4 !important;
-  color:#166534 !important;
+/* VESCO V10.28 — correção tela Separados Hoje */
+@media (max-width: 760px){
+  .v1028-separados-table table,
+  .v1028-separados-table thead,
+  .v1028-separados-table tbody,
+  .v1028-separados-table th,
+  .v1028-separados-table td,
+  .v1028-separados-table tr{
+    display:block;
+  }
+
+  .v1028-separados-table thead{
+    display:none;
+  }
+
+  .v1028-separados-table tr{
+    margin:10px 0;
+    border:1px solid #dbeafe;
+    border-radius:16px;
+    background:#fff;
+    padding:10px;
+    box-shadow:0 10px 22px rgba(15,23,42,.06);
+  }
+
+  .v1028-separados-table td{
+    border:0!important;
+    padding:7px 4px!important;
+  }
+
+  .v1028-separados-table td:nth-child(1)::before{content:"Pedido: ";font-weight:900;color:#35506f}
+  .v1028-separados-table td:nth-child(3)::before{content:"Iniciado por: ";font-weight:900;color:#35506f}
+  .v1028-separados-table td:nth-child(4)::before{content:"Início: ";font-weight:900;color:#35506f}
+  .v1028-separados-table td:nth-child(5)::before{content:"Finalizado por: ";font-weight:900;color:#35506f}
+  .v1028-separados-table td:nth-child(6)::before{content:"Separado: ";font-weight:900;color:#35506f}
+  .v1028-separados-table td:nth-child(7)::before{content:"Tempo: ";font-weight:900;color:#35506f}
+  .v1028-separados-table td:nth-child(8)::before{content:"Status: ";font-weight:900;color:#35506f}
 }
 
 
-/* ============================================================================
-   VESCO V10.17 — rota calculada no mapa
-   ============================================================================ */
-.v117-route-line{
-  stroke:#22c55e !important;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-  filter:drop-shadow(0 0 5px rgba(34,197,94,.35));
+/* VESCO V10.28 — mobile completo */
+@media (max-width: 820px){
+  html,body{max-width:100%;overflow-x:hidden;}
+  .v8-shell{display:block!important;padding-left:0!important;}
+  #v8Sidebar{width:64px!important;min-width:64px!important;position:fixed!important;left:0!important;top:0!important;bottom:0!important;z-index:60!important;overflow-y:auto!important;}
+  #v8Sidebar .v8-brand-text,#v8Sidebar .v8-nav-label,#v8Sidebar .v8-side-footer span{display:none!important;}
+  .v8-main{margin-left:64px!important;width:calc(100vw - 64px)!important;padding-bottom:92px!important;}
+  .v8-topbar{position:sticky!important;top:0!important;z-index:40!important;gap:8px!important;padding:8px!important;flex-direction:column!important;align-items:stretch!important;border-radius:0 0 16px 16px!important;}
+  .v8-title-area{min-width:0!important;display:flex!important;align-items:center!important;gap:8px!important;}
+  #v8Title{font-size:18px!important;line-height:1.05!important;}
+  #v8Sub{font-size:11px!important;}
+  .v8-top-actions{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important;width:100%!important;}
+  .v8-date,.v8-month,.v8-input,.v8-clock,.v8-btn{width:100%!important;min-height:42px!important;font-size:13px!important;}
+  #v8Search{grid-column:1 / -1!important;}
+  .v8-kpis,.v8-grid,.v8-main-grid{display:grid!important;grid-template-columns:1fr!important;gap:10px!important;}
+  .v8-card{border-radius:16px!important;margin:10px 6px!important;overflow:hidden!important;}
+  .v8-card-head{gap:8px!important;align-items:flex-start!important;flex-direction:column!important;}
+  .v8-card-head .v8-btn{width:100%!important;}
+  .v8-table-wrap{overflow:visible!important;max-width:100%!important;}
+  .v8-table{min-width:0!important;width:100%!important;}
+  .v8-table thead{display:none!important;}
+  .v8-table tbody,.v8-table tr,.v8-table td{display:block!important;width:100%!important;}
+  .v8-table tr{background:#fff!important;border:1px solid #dbeafe!important;border-radius:16px!important;margin:10px 8px!important;padding:10px!important;box-shadow:0 8px 20px rgba(15,23,42,.06)!important;}
+  .v8-table td{border:0!important;padding:6px 2px!important;word-break:break-word!important;}
+  .v8-table td:last-child{padding-top:10px!important;}
+  .v1021-action-stack,.v8-actions,.v8-row-actions{display:grid!important;grid-template-columns:1fr!important;gap:8px!important;width:100%!important;}
+  .v1021-action-stack .v8-btn,.v8-actions .v8-btn,.v8-row-actions .v8-btn,.v8-table td button{width:100%!important;min-height:44px!important;}
+  .v8-chip{display:inline-flex!important;max-width:100%!important;white-space:normal!important;}
+  .v8-modal,.v8-dialog,.v8-modal-card{width:calc(100vw - 24px)!important;max-width:calc(100vw - 24px)!important;margin:12px!important;border-radius:18px!important;}
+  .v8-modal input,.v8-modal textarea,.v8-modal select,.v8-dialog input,.v8-dialog textarea,.v8-dialog select{width:100%!important;min-height:44px!important;font-size:16px!important;}
+  .v8-map,#v8Map,.leaflet-container{min-height:320px!important;}
+  #v8MobileBar{position:fixed!important;left:64px!important;right:0!important;bottom:0!important;z-index:80!important;display:grid!important;grid-template-columns:repeat(5,1fr)!important;gap:4px!important;background:#06162b!important;padding:8px 6px calc(8px + env(safe-area-inset-bottom))!important;border-top:1px solid rgba(255,255,255,.12)!important;}
+  #v8MobileBar button{min-height:48px!important;color:#cfe8ff!important;border:0!important;background:transparent!important;border-radius:12px!important;font-size:10px!important;}
+  #v8MobileBar button.active,#v8MobileBar button:hover{background:#1597ff!important;color:#fff!important;}
 }
-.v117-route-fallback{
-  stroke:#f59e0b !important;
-  stroke-linecap:round;
-  stroke-linejoin:round;
+@media (max-width: 480px){
+  #v8Sidebar{width:54px!important;min-width:54px!important;}
+  .v8-main{margin-left:54px!important;width:calc(100vw - 54px)!important;}
+  #v8MobileBar{left:54px!important;}
+  .v8-top-actions{grid-template-columns:1fr!important;}
+  .v8-card{margin:8px 4px!important;}
+  .v8-table tr{margin:8px 4px!important;}
 }
 
-
-/* ============================================================================
-   VESCO V10.19 — leitura inteligente / realtime instantâneo
-   ============================================================================ */
-.vesco-realtime-toast.done{
-  border-left-color:#22c55e;
-}
-.vesco-realtime-toast.start{
-  border-left-color:#f59e0b;
-}
-.v8-chip.orange{
-  background:#fff7ed !important;
-  color:#c2410c !important;
-}
-
-
-/* VESCO V10.20 — limpeza de linhas fantasma do Firebase */
-.v8-chip.firebase-clean{
-  background:#dcfce7;
-  color:#166534;
-}
-
-/* ============================================================================
-   VESCO V10.21 — Rotas recolhíveis, mapa do pedido e retirada inteligente
-   ============================================================================ */
-.v1021-routes-toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 12px;padding:10px 12px;border:1px solid #dbeafe;background:#f8fbff;border-radius:14px;color:#35506f;font-weight:900}
-.v1021-routes-fade{margin-top:10px;padding:12px;border-radius:14px;background:#f8fafc;border:1px dashed #cbd5e1;color:#64748b;font-weight:900;text-align:center}
-.v1021-action-stack{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.v1021-action-stack .v8-btn{padding:9px 12px;white-space:nowrap}
-@media(max-width:760px){.v1021-routes-toggle{display:grid}.v1021-action-stack{display:grid;grid-template-columns:1fr}}
+/* VESCO V10.28 — prevenção de travamento */
+.v8-loading{pointer-events:none!important;}

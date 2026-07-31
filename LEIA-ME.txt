@@ -1,0 +1,30 @@
+VESCO CONTROL V10.39 — FLEX + HISTÓRICO DIÁRIO + SYNC RÁPIDA
+
+PUBLICAR NO FRONTEND:
+- index.html
+- modulo.vesco-v8-operacional.js
+- vesco-v8-operacional.css
+- vesco-firebase-realtime.js
+- vesco-mobile-v10.39.js
+
+MANTER:
+- styles.css
+- firebase-config.js
+- motorista.html
+
+NÃO CARREGAR JUNTO:
+- app.js / app.state.js
+- módulos V7/V9
+- vesco-mobile de versões anteriores
+
+BACKEND RECOMENDADO:
+- vesco-operacional-realtime V2.0.3, incluído no pacote geral separado.
+- QUICK_SYNC_INTERVAL_SECONDS=60
+- FULL_SYNC_INTERVAL_SECONDS=21600
+- FIREBASE_HISTORY_ROOT=vesco_operacao_v2/history
+
+HISTÓRICO:
+- entregas: vesco_operacao_v2/history/deliveries/AAAA-MM-DD
+- retiradas: vesco_operacao_v2/history/withdrawals/AAAA-MM-DD
+- rotas: vesco_operacao_v2/history/routes/AAAA-MM-DD
+- resumo diário: vesco_operacao_v2/history/daily/AAAA-MM-DD
