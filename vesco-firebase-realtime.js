@@ -1,4 +1,4 @@
-// vesco-firebase-realtime.js — VESCO CONTROL V10.46 FIREBASE LIMPO
+// vesco-firebase-realtime.js — VESCO CONTROL V10.47 FIREBASE LIMPO
 // Sincroniza operadores em tempo real via Firebase Realtime Database.
 // Carregar depois de firebase-config.js e depois de modulo.vesco-v8-operacional.js.
 
@@ -65,7 +65,7 @@
 
     db = window.firebase.database(app);
     initialized = true;
-    console.log("VESCO Firebase V10.46 conectado:", cfg.databaseURL);
+    console.log("VESCO Firebase V10.47 conectado:", cfg.databaseURL);
     return db;
   }
 
@@ -101,7 +101,7 @@
       return true;
     }
 
-    // V10.46: não cria mais pedidos fantasmas no state.orders.
+    // V10.47: não cria mais pedidos fantasmas no state.orders.
     // Se o pedido não veio da planilha/API atual, o patch fica salvo no Firebase,
     // mas não polui Retiradas/Sem rota.
     return false;
@@ -179,7 +179,7 @@
           entregue_em:ent.entregue_em || ent.updated_at || now()
         });
 
-        // V10.46: mesmo se o pedido não estiver carregado no ERP, aparece em Entregues.
+        // V10.47: mesmo se o pedido não estiver carregado no ERP, aparece em Entregues.
         const v8=getV8();
         if(v8 && v8.state){
           v8.state.deliveredExternal = Array.isArray(v8.state.deliveredExternal) ? v8.state.deliveredExternal : [];
@@ -390,7 +390,7 @@ async function startListeners(){
     if(!v8 || v8.__firebasePatchedV10) return;
     v8.__firebasePatchedV10 = true;
 
-    // V10.46: não sobrescreve updateStatus do módulo principal.
+    // V10.47: não sobrescreve updateStatus do módulo principal.
     // O módulo principal já salva operador, início, fim e status em todos os IDs do pedido.
     const oldConfirm = v8.confirmarEntregaRotaSite;
     v8.confirmarEntregaRotaSite = async function(rotaId, token, pedido){
@@ -426,7 +426,7 @@ async function startListeners(){
       return saved;
     };
 
-    console.log("VESCO Firebase Realtime V10.46: métodos do painel sincronizados.");
+    console.log("VESCO Firebase Realtime V10.47: métodos do painel sincronizados.");
   }
 
   async function boot(){
@@ -436,8 +436,8 @@ async function startListeners(){
       await wait();
     }
     if(!(window.VescoV8 && window.VescoV8.state)){
-      console.warn("VESCO Firebase Realtime V10.46: aguardando núcleo VescoV8; listeners serão tentados depois.");
-      setTimeout(()=>boot().catch(e=>console.warn("VESCO Firebase V10.46 retry:", e.message||e)), 3000);
+      console.warn("VESCO Firebase Realtime V10.47: aguardando núcleo VescoV8; listeners serão tentados depois.");
+      setTimeout(()=>boot().catch(e=>console.warn("VESCO Firebase V10.47 retry:", e.message||e)), 3000);
       return false;
     }
     await startListeners();
@@ -460,12 +460,12 @@ async function startListeners(){
     })
   };
 
-  // V10.46: realtime pesado desligado por padrão.
+  // V10.47: realtime pesado desligado por padrão.
   // O listener em /vesco_operacao/orders causava download/filtragem no cliente e travava a troca de módulos.
   // As funções de salvar rota/status continuam disponíveis e inicializam Firebase sob demanda.
   if(window.VESCO_FIREBASE_REALTIME_ENABLED === true){
-    boot().catch(e=>console.error("VESCO Firebase V10.46 erro:", e));
+    boot().catch(e=>console.error("VESCO Firebase V10.47 erro:", e));
   }else{
-    console.log("VESCO Firebase Realtime V10.46 em modo leve: listeners automáticos desligados.");
+    console.log("VESCO Firebase Realtime V10.47 em modo leve: listeners automáticos desligados.");
   }
 })();

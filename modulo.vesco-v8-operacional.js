@@ -104,7 +104,24 @@
     return raw;
   }
   function money(v){ return Number(v||0).toLocaleString("pt-BR", { style:"currency", currency:"BRL" }); }
-  function parseMoney(v){ if(typeof v==="number") return Number.isFinite(v)?v:0; let s=txt(v); if(!s) return 0; s=s.replace(/[^\d,.-]/g,""); if(s.includes(",")&&s.includes(".")) s=s.replace(/\./g,"").replace(",","."); else if(s.includes(",")) s=s.replace(",","."); const n=parseFloat(s); return Number.isFinite(n)?n:0; }
+  function parseMoney(v){
+    if(typeof v==="number") return Number.isFinite(v)?v:0;
+    let s=txt(v).replace(/[^0-9,.-]/g,"");
+    if(!s) return 0;
+    const comma=s.lastIndexOf(","), dot=s.lastIndexOf(".");
+    if(comma>=0 && dot>=0){
+      if(comma>dot) s=s.replace(/\./g,"").replace(",",".");
+      else s=s.replace(/,/g,"");
+    }else if(comma>=0){
+      const decimals=s.length-comma-1;
+      s=(decimals===1||decimals===2)?s.replace(/\./g,"").replace(",","."):s.replace(/,/g,"");
+    }else if(dot>=0){
+      const decimals=s.length-dot-1;
+      if(!(decimals===1||decimals===2)) s=s.replace(/\./g,"");
+    }
+    const n=Number(s);
+    return Number.isFinite(n)?n:0;
+  }
 
   function pick(o, aliases){
     if(!o) return "";
@@ -161,8 +178,27 @@
     return 'Retirada';
   }
 
-  function orderKey(o){ return txt(pick(o,["pedido_key","pedidoKey","id","id_tiny","idTiny","numero","pedido","numero_pedido","numeroPedido"])); }
-  function number(o){ return txt(pick(o,["numero","pedido","id_tiny","idTiny","id","numero_pedido","numeroPedido"]) || orderKey(o)); }
+  function orderKey(o){ return txt(pick(o,["pedido_key","pedidoKey","id","id_tiny","idTiny","tiny_order_id","pedido_id","numero","num","pedido","numero_pedido","numeroPedido"])); }
+  function number(o){
+    o=o||{};
+    const internalIds=[
+      pick(o,["id_tiny","idTiny","tiny_order_id","pedido_id","order_id"]),
+      o.id
+    ].map(txt).filter(Boolean).map(v=>v.replace(/^.*__/,""));
+    const rawObjs=[o.raw,o.__raw,o.detalhe,o.raw_order,o.pedido_raw].filter(x=>x&&typeof x==="object");
+    const candidates=[
+      pick(o,["tiny_number","numero_tiny","numeroTiny","numero_pedido_tiny"]),
+      pick(o,["numero","numeroPedido","numero_pedido"]),
+      pick(o,["pedido","num"])
+    ];
+    rawObjs.forEach(r=>{
+      candidates.push(pick(r,["numero","tiny_number","numeroPedido","numero_pedido"]));
+      if(r.pedido&&typeof r.pedido==="object") candidates.push(pick(r.pedido,["numero","tiny_number","numeroPedido"]));
+    });
+    const clean=[...new Set(candidates.map(txt).filter(Boolean))];
+    const commercial=clean.find(v=>!internalIds.includes(v.replace(/^.*__/,"")) && !v.includes("__"));
+    return commercial || clean[0] || txt(pick(o,["id_tiny","idTiny","id"])) || orderKey(o);
+  }
   function ecom(o){ return txt(pick(o,["numero_ecommerce","numeroEcommerce","ecommerce","e_commerce","ecom","id_ecommerce","idEcommerce"])); }
   function client(o){ return txt(pick(o,["cliente_nome","clienteNome","cliente nome","destinatario","destinatário","cliente","nome","nome_destinatario","nomeDestinatario"]) || "Cliente não informado"); }
   function addressCandidate(v){
@@ -505,29 +541,32 @@
   function cleanAddressForSPGeocode(addr){
     let a=txt(addr);
     if(!a) return "";
-    a=a.replace(/\s*\|\s*/g,", ");
-    a=a.replace(/\s+/g," ").trim();
-
-    // Remove bairro entre " - Bairro, São Paulo-SP" quando isso confunde o geocoder.
-    // Mantém rua/número + cidade/UF/CEP.
-    let street=a.split(", São Paulo")[0] || a;
-    street=street.replace(/\s+-\s+[^,|]+$/,"").trim();
-
+    a=a.replace(/\s*\|\s*/g,", ").replace(/\s+/g," ").trim();
     const cep=(a.match(/\b\d{2}\.?\d{3}-?\d{3}\b/)||[""])[0];
-    const city=looksLikeSPAddress(a) ? "São Paulo, SP, Brasil" : "Brasil";
-    return [street, city, cep].filter(Boolean).join(", ");
+    const parts=a.split(",").map(x=>x.trim()).filter(Boolean);
+    const street=parts[0]||"";
+    let house="";
+    for(let i=1;i<Math.min(parts.length,4);i++){
+      const m=parts[i].match(/^\d+[A-Za-z\-\/]*/);
+      if(m){house=m[0];break;}
+    }
+    const city=looksLikeSPAddress(a)?"São Paulo, SP, Brasil":"Brasil";
+    return [street,house,city,cep].filter(Boolean).join(", ");
   }
   function geocodeCandidates(addr){
-    const a=txt(addr);
+    const a=txt(addr).replace(/\s*\|\s*/g,", ").replace(/\s+/g," ").trim();
     const clean=cleanAddressForSPGeocode(a);
+    const cep=(a.match(/\b\d{2}\.?\d{3}-?\d{3}\b/)||[""])[0];
     const out=[];
     if(clean) out.push(clean);
-    if(a && a!==clean) out.push(a);
-    if(looksLikeSPAddress(a)){
-      const street=(a.split("|")[0]||a).replace(/\s+-\s+[^,|]+$/,"").trim();
-      out.push([street,"São Paulo, SP, Brasil"].filter(Boolean).join(", "));
-    }
-    return [...new Set(out.map(x=>x.replace(/\s+/g," ").trim()).filter(Boolean))];
+    if(cep && looksLikeSPAddress(a)) out.push(`${cep}, São Paulo, SP, Brasil`);
+    // Versão sem referência/complemento duplicado, comum nos endereços do Tiny.
+    const noNoise=a
+      .replace(/,?\s*(refer[eê]ncia|referencia|ref\.?|observa[cç][aã]o|complemento)\b.*?(?=,\s*(s[aã]o paulo|sp|\d{2}\.?\d{3}-?\d{3})\b|$)/ig,"")
+      .replace(/,\s*,/g,",").trim();
+    if(noNoise && noNoise!==clean) out.push(noNoise);
+    if(a && a!==clean && a!==noNoise) out.push(a);
+    return [...new Set(out.map(x=>x.replace(/\s+/g," ").replace(/,\s*,/g,",").trim()).filter(Boolean))];
   }
   async function geocodeNominatim(query, originalAddress){
     const url="https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=br&addressdetails=1&q="+encodeURIComponent(query);
@@ -694,12 +733,18 @@ function coords(o){
     return n==="sim" || n==="true" || n==="ok" || n.includes("marcador confirmado") || n.includes("confirmado no pedido obter");
   }
   function isFlexProjeto(o){
-    if(!isStrictFlexMarker(o)) return false;
-    // V8.7.2: a API Flex já é a fonte filtrada/validada pelo Apps Script.
-    // Algumas respostas antigas não trazem marcador_validado_no_detalhe no JSON,
-    // então o painel aceita origem API Flex + marcador válido.
+    if(!o || typeof o!=="object") return false;
     const source=txt(pick(o,["__v8source","__source","source"])).toLowerCase();
-    return flexValidated(o) || source==="flex";
+    const explicitFlex = o.is_flex === true || isFlexIndicator(o);
+
+    // V10.49: quando a linha veio do endpoint dedicado /flex-pedidos ou do
+    // Apps Script Flex, ela já passou pela fonte exclusiva do Flex.
+    // Não descarta mais a linha só porque uma implantação antiga omitiu o
+    // campo marcador_flex_id no JSON.
+    if(source==="flex" && explicitFlex) return true;
+
+    if(!isStrictFlexMarker(o)) return false;
+    return flexValidated(o) || explicitFlex;
   }
   function autoCleanFlexStorageV87(){
     let removedKeys=0, removedRows=0, keptRows=0;
@@ -1438,9 +1483,24 @@ function coords(o){
     return true;
   }
 
+  async function refreshFlexFromWorker(showAlert=false){
+    try{
+      const url = EASYPANEL_URL + "/flex-pedidos?month=" + encodeURIComponent(state.month) + "&mes=" + encodeURIComponent(state.month) + "&_ts=" + Date.now();
+      const data = await fetchEasyPanelJson(url.replace(EASYPANEL_URL,""), 45000);
+      const apiFlex = extractArray(data,["flex","flexOrders","enviosFlex","data","rows"]).map(o=>normalizeOrder(o,"flex"));
+      state.lastFlexPayload=data;
+      state.lastFlexDiagnostics=data && data.diagnostics ? data.diagnostics : null;
+      state.lastFlexRawCount=apiFlex.length;
+      const accepted=apiFlex.filter(o=>!o.is_delivered && o.is_flex && isFlexProjeto(o));
+      state.lastFlexAcceptedCount=accepted.length;
+      if(accepted.length){ state.flex=dedup(accepted); saveStoredFlex(state.flex,state.month); if(showAlert) alert(`Flex atualizado pelo worker: ${accepted.length} pedido(s).`); return true; }
+      return false;
+    }catch(e){ console.warn("V10.47: worker /flex-pedidos indisponível; tentando API Flex antiga.", e.message||e); return false; }
+  }
+
   async function refreshFlexFromAppsScriptOnly(showAlert=false){
-    // V10.31: botão Atualizar Flex não depende do snapshot do EasyPanel.
-    // Ele chama diretamente a API Flex validada e salva o mês localmente.
+    // V10.47: primeiro tenta o worker /flex-pedidos, que usa a regra da planilha sem gastar UrlFetch no Apps Script.
+    if(await refreshFlexFromWorker(showAlert)) return true;
     try{
       const fp=await jsonp(API_FLEX,{action:"enviosFlex",dataISO:state.date,mes:state.month,allFlex:"1"},60000);
       state.lastFlexPayload=fp;
@@ -1488,10 +1548,9 @@ async function loadData(force=false){
         }
         setTimeout(()=>refreshPlanilhaInstantanea(true), 1800);
         setTimeout(()=>refreshPlanilhaInstantanea(true), 4500);
-        // V10.31: se o snapshot não veio com Flex, tenta a API Flex validada sem mexer no ERP.
-        if(!(state.flex||[]).length){
-          await refreshFlexFromAppsScriptOnly(false);
-        }
+        // V10.49: ERP e Flex são fontes independentes.
+        // Atualizar sempre relê o Flex, mesmo quando o snapshot ERP carregou com sucesso.
+        await refreshFlexFromAppsScriptOnly(false);
       }catch(e){
         console.warn("V10.43: atualização pelo worker/planilha falhou.", e);
       }
@@ -1533,6 +1592,17 @@ async function loadData(force=false){
       state.loading=false;
       showLoading(false);
       updateBadges();
+
+      // V10.49: o snapshot ERP não contém obrigatoriamente os pedidos Flex.
+      // A versão anterior retornava aqui e nunca chamava /flex-pedidos no boot.
+      setTimeout(async()=>{
+        try{
+          const ok=await refreshFlexFromAppsScriptOnly(false);
+          if(ok && (Array.isArray(ok) ? ok.length : true)) render();
+        }catch(e){
+          console.warn("V10.49: carga paralela do Flex falhou.", e.message||e);
+        }
+      },80);
       return;
     }
 
@@ -3897,7 +3967,7 @@ function renderDriverLiveMap(forceFit=false){
           <div class="v8-table-wrap"><table class="v8-table"><thead><tr><th>Pedido</th><th>Cliente / endereço</th><th>Data</th><th>Status</th><th>Valor</th><th>Ação</th></tr></thead><tbody>${tableList.length?tableList.map(o=>{const id=esc(orderKey(o)||number(o)); return `<tr><td>${orderCell(o)} ${dueDate(o)&&dueDate(o)<state.date?'<span class="v8-chip red">Atrasado</span>':'<span class="v8-chip green">Do dia</span>'}</td><td>${clientCell(o)}</td><td><span class="v8-chip gray">${br(dueDate(o))}</span></td><td>${esc(status(o)||"Pendente")}</td><td>${money(value(o))}</td><td><div class="v1021-action-stack"><button class="v8-btn secondary" onclick="VescoV8.abrirPedidoNoMapa('${id}','logistica')">Mapa</button><button class="v8-btn orange" onclick="VescoV8.marcarComoRetirada('${id}')">É retirada</button><button class="v8-btn green" onclick="VescoV8.updateStatus('${id}','Entregue')">Entregue</button></div></td></tr>`;}).join(""):`<tr><td colspan="6" class="v8-empty"><b>Nenhum ERP pendente para entrega.</b></td></tr>`}</tbody></table></div>
         </div>
         <div class="v8-card v8-map-card">
-          <div class="v8-map-toolbar"><div><h3>Mapa ERP</h3><small>Somente pedidos da lista</small></div><button class="v8-btn secondary" onclick="VescoV8.renderMap('logistica', true)">Ajustar</button></div>
+          <div class="v8-map-toolbar"><div><h3>Mapa ERP</h3><small>Somente pedidos da lista</small></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="v8-btn secondary" onclick="VescoV8.gerarPingsMapa('logistica')">Gerar pings</button><button class="v8-btn secondary" onclick="VescoV8.renderMap('logistica', true)">Ajustar</button></div></div>
           <div id="v8-map-logistica" class="v8-map"></div><div id="v8-map-logistica-stats" class="v8-map-stats"></div>
         </div>
       </div>`;
@@ -4152,9 +4222,8 @@ function renderDriverLiveMap(forceFit=false){
       await sleep(900);
     }
 
-    const fail={status:"ZERO_RESULTS",query:candidates[0]||a};
-    state.geoCache[cacheKey]=fail;
-    return fail;
+    // Não guarda falha definitiva: o endereço pode ser corrigido ou a API pode estar temporariamente indisponível.
+    return {status:"ZERO_RESULTS",query:candidates[0]||a,ts:Date.now()};
   }
   function applyGeoToOrder(o, ge){
     if(!o || !ge || ge.status!=="OK") return false;
@@ -4170,7 +4239,33 @@ function renderDriverLiveMap(forceFit=false){
     o.geocode_source=ge.source||"auto";
     return true;
   }
-  async function autoGeocodeMap(type,list){
+  async function persistGeoPatch(o){
+    const id=orderKey(o)||number(o)||o?.id||o?.id_tiny;
+    if(!id) return false;
+    const patch={
+      lat:o.lat,lon:o.lon,latitude:o.lat,longitude:o.lon,
+      geocode_status:o.geocode_status||"OK_AUTO_MAP_V1048",
+      geocode_source:o.geocode_source||"auto",
+      geocode_at:new Date().toISOString()
+    };
+    try{
+      await firebasePatch("vesco_operacao/orders/"+firebaseSafeId(id),patch,6500);
+      return true;
+    }catch(e){
+      console.warn("V10.48: não persistiu coordenada no Firebase",id,e.message||e);
+      return false;
+    }
+  }
+  async function gerarPingsMapa(type="logistica"){
+    const list=listForMap(type);
+    const stats=document.getElementById(`v8-map-${type}-stats`);
+    if(stats) stats.innerHTML+=`<span class="warn">Localizando endereços...</span>`;
+    const ok=await autoGeocodeMap(type,list,true);
+    if(!ok && !list.some(coords)) alert("Ainda não consegui gerar os pings. Confira se os endereços possuem rua, número, cidade e CEP.");
+    return ok;
+  }
+
+  async function autoGeocodeMap(type,list,force=false){
     const key=`${type}:${state.tab}:${state.date}:${state.month}`;
     if(state.geoAutoRunning[key]) return false;
     const missing=(list||[]).filter(o=>!coords(o)&&hasAddress(o)).slice(0,25);
@@ -4181,14 +4276,17 @@ function renderDriverLiveMap(forceFit=false){
       for(const o of missing){
         try{
           const ge=await geocodeAddressViaFlexApi(address(o));
-          if(applyGeoToOrder(o,ge)) updated++; else fail++;
+          if(applyGeoToOrder(o,ge)){
+            updated++;
+            await persistGeoPatch(o);
+          }else fail++;
         }catch(e){ fail++; }
         await sleep(180);
       }
       if(updated){
         saveLocalSnapshot(snapshotFromState());
         const stats=document.getElementById(`v8-map-${type}-stats`);
-        if(stats) stats.innerHTML+=`<span class="ok">${updated} endereço(s) reposicionado(s) em SP</span>`;
+        if(stats) stats.innerHTML+=`<span class="ok">${updated} ping(s) gerado(s) e salvo(s)</span>`;
         setTimeout(()=>renderMap(type,true,list),250);
       }else if(fail){
         const stats=document.getElementById(`v8-map-${type}-stats`);
@@ -4443,7 +4541,7 @@ function renderMap(type,forceFit=false,listOverride=null){
       const missingAddress=listFull.filter(o=>!coords(o)&&hasAddress(o)).length;
       const rejected=listFull.filter(o=>txt(o.geocode_status).includes("FORA_DE_SP")).length;
       const limited = plottedFull.length > plotted.length;
-      stats.innerHTML=`<span class="ok">${plotted.length}/${listFull.length} no mapa interno</span><span class="warn">${listFull.length-plotted.length} fora do mapa rápido</span>${limited?`<span class="warn">mapa limitado a ${plotted.length} pins para não travar</span>`:""}<span>${missingAddress} com endereço</span>${rejected?`<span class="warn">${rejected} coordenada fora de SP</span>`:""}${missingAddress?`<button class="v8-mini-btn" onclick="VescoV8.openGoogleMapsForList('${type}')">Abrir no Google Maps por endereço</button>`:""}`;
+      stats.innerHTML=`<span class="ok">${plotted.length}/${listFull.length} no mapa interno</span><span class="warn">${listFull.length-plotted.length} fora do mapa rápido</span>${limited?`<span class="warn">mapa limitado a ${plotted.length} pins para não travar</span>`:""}<span>${missingAddress} aguardando localização</span>${rejected?`<span class="warn">${rejected} coordenada fora de SP</span>`:""}${missingAddress?`<button class="v8-mini-btn" onclick="VescoV8.openGoogleMapsForList('${type}')">Abrir no Google Maps por endereço</button>`:""}`;
     }
     setTimeout(()=>{try{map.invalidateSize(true); if(pts.length&&forceFit){ if(pts.length===1) map.setView(pts[0],15); else map.fitBounds(L.latLngBounds(pts).pad(.16),{maxZoom:14}); }}catch(e){}},80);
 
@@ -4530,11 +4628,14 @@ function renderMap(type,forceFit=false,listOverride=null){
     // V10.43: no boot, não força /sync nem rota pesada.
     // Primeiro lê /snapshot-lite do worker e Firebase root; Apps Script direto só se URL nova for configurada.
     await loadData(false);
+    // V10.49: garante uma leitura Flex no primeiro boot, sem depender do
+    // conteúdo do snapshot ERP nem do cache local do navegador.
+    try{ await refreshFlexFromAppsScriptOnly(false); }catch(e){}
     render();
     startPlanilhaInstantaneaPolling();
     setTimeout(()=>refreshPlanilhaInstantanea(true), 2500);
   }
-  window.VescoV8={__v82:true,__v821:true,__v84:true,__v86:true,__v861:true,__v87:true,__v871:true,__v872:true,__v873:true,__v874:true,__v875:true,__v876:true,__v90:true,__v91:true,__v92:true,__v921:true,__v922:true,__v93:true,__v94:true,__v95:true,__v100:true,__v101:true,__v102:true,__v103:true,__v104:true,__v105:true,__v106:true,__v107:true,__v108:true,__v109:true,__v1010:true,__v1011:true,__v1012:true,__v1013:true,__v1014:true,__v1015:true,__v1016:true,__v1017:true,__v1018:true,__v1019:true,__v1020:true,__v1021:true,__v1022:true,__v1023:true,__v1024:true,__v1027:true,__v1028:true,__v1029:true,__v1030:true,__v1031:true,__v1032:true,__v1035:true,__v1036:true,__v1037:true,__v1038:true,__v1039:true,__v1040:true,__v1041:true,__v1042:true,__v1043:true,state,init,go,
+  window.VescoV8={__v82:true,__v821:true,__v84:true,__v86:true,__v861:true,__v87:true,__v871:true,__v872:true,__v873:true,__v874:true,__v875:true,__v876:true,__v90:true,__v91:true,__v92:true,__v921:true,__v922:true,__v93:true,__v94:true,__v95:true,__v100:true,__v101:true,__v102:true,__v103:true,__v104:true,__v105:true,__v106:true,__v107:true,__v108:true,__v109:true,__v1010:true,__v1011:true,__v1012:true,__v1013:true,__v1014:true,__v1015:true,__v1016:true,__v1017:true,__v1018:true,__v1019:true,__v1020:true,__v1021:true,__v1022:true,__v1023:true,__v1024:true,__v1027:true,__v1028:true,__v1029:true,__v1030:true,__v1031:true,__v1032:true,__v1035:true,__v1036:true,__v1037:true,__v1038:true,__v1039:true,__v1040:true,__v1041:true,__v1042:true,__v1043:true,__v1048:true,__v1049:true,state,init,go,
     openFlexMonth:async(month)=>{state.month=month||state.month; const m=document.getElementById("v8Month"); if(m)m.value=state.month; await loadData(true); if(!flexList().length) await refreshFlexFromAppsScriptOnly(false); renderFlex();},
     saveFlexMonthNow:()=>{const saved=saveStoredFlex(flexList(),state.month); alert(saved.saved?`Mês armazenado: ${monthLabel(saved.month)} — ${saved.total} pedido(s).`:`Nada novo para armazenar em ${monthLabel(saved.month)}.`); renderFlex(); return saved;},
     refreshFlexOnly:async()=>{showLoading(true); await refreshFlexFromAppsScriptOnly(true); showLoading(false); renderFlex();},
@@ -4544,12 +4645,12 @@ function renderMap(type,forceFit=false,listOverride=null){
     sleep,
     routeReadyList,routeFlexExtras,addFlexToRouteByCode,removeFlexFromRoute,routeMotoristaLink,routeOfflinePayload,encodeRoutePayload,routeOrdersRows,routeOrdersStats,renderPedidosEmRota,confirmarEntregaRotaSite,openMapForRouteOrder,shareRouteById,openShareRouteModal,copyShareInput,closeShareModal,copyRouteLinkById,copyRouteLinkDirect,openWhatsAppRouteById,toggleRotasCriadas,abrirPedidoNoMapa,abrirCorrecaoEndereco,marcarComoRetirada,whatsappRouteLink,saveRouteFirebase,testFirebaseRoutes,fastRouteLink,localRotas,firebasePatchOrder,refreshFromAppsScriptBackground,loadFirebaseSnapshot,saveFirebaseSnapshot,refreshEntreguesAgora,loadDeliveredFromFirebaseRoutes,refreshMotoristasLocalizacao,renderMotoristasAoVivo,safeRenderMotoristasAoVivo,renderDriverLiveMap,mostrarMotoristaNoMapa,focarMotoristaRota,startMotoristaTrackingPolling,stopMotoristaTrackingPolling,
     salvarDetalhesPedido,marcarPendenciaProduto,resolverPendenciaProduto,pendenciasProdutoList,abrirRelatorioPendencia,abrirObsLinkPedido,salvarObsLinkPedido,salvarRelatorioPendencia,fecharPedidoModal,
-    runFlexGeocode,statusFlexGeocode,autoGeocodeMap,geocodeAddressViaFlexApi,openMapForOrder,openGoogleMapsForList,googleMapsDirectionsUrlFromOrders,
+    runFlexGeocode,statusFlexGeocode,autoGeocodeMap,gerarPingsMapa,geocodeAddressViaFlexApi,openMapForOrder,openGoogleMapsForList,googleMapsDirectionsUrlFromOrders,
     renderTarefasFrota,registrarTarefaFrota,concluirTarefaFrota,removerTarefaFrota,tarefasFrotaList,
     sidebar:()=>{state.sidebarCollapsed=!state.sidebarCollapsed; document.body.classList.toggle("v8-sidebar-collapsed",state.sidebarCollapsed); localStorage.setItem("vesco:v8:sidebarCollapsed",state.sidebarCollapsed?"1":"0");},
-    today:async()=>{state.date=todayISO(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; await loadData(true); render();},refresh:async()=>{await loadData(true); render();},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,definirOperador,operadorAtual,produtosText,pagamentoText,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{linhaAoVivoMultipontos:true,statusRealtimeFix:true,retiradaRecebedorFix:true,rotaCalculadaFix:true,entreguesComprovantesFix:true,entreguesFirebaseDireto:true,leituraInteligenteV1019:true,realtimeInstantaneo:true,retiradaInteligente:true,firebaseLimpoV1020:true,semPedidoFantasma:true,realtimeLimitado:true,retiradaOlistV1021:true,rotasRecolhiveis:true,botaoMapaPedido:true,retiradaCodigoRD:true,separacaoSemRetirada:true,mapaSpV1023:true,geocodeSaoPaulo:true,semBotaoCorrigirEndereco:true,easyPanelFirstV1024:true,appsScriptEmergencia:true,atualizarViaEasyPanel:true,mobilePendenciaV1027:true,pendenciaFirebaseFirst:true,mobileCardsV1027:true,renderSeparadosFixV1027:true,separadosHojeDataRealV1027:true,mobileFullV1027:true,frontendMarketplaceCleanV1027:true,pendenciaNaoEntregaV1028:true,operadorRotaEntreguesV1028:true,planilhaStatusVetoV1029:true,rotasSomenteDataV1030:true,prontoIncluiSeparadosHojeV1031:true,flexApiFallbackV1031:true,enderecoLeituraAmpliadaV1031:true,prontoSomenteSeparadosDiaV1032:true,motoristasSomenteRotasDiaV1032:true,enderecoMestrePreservadoV1032:true,renderLeveV1032:true,performanceV1035:true,mapaLeveV1035:true,tabelasLimitadasV1035:true,planilhaFirstV1037:true,planilhaInstantV1038:true,pollingPlanilhaV1038:true,separacaoIncluiRetiradaV1038:true,workerFirstV1039:true,snapshotLiteFirstV1039:true,semAppsScriptAntigoV1039:true,workerPlanilhaV1040:true,planilhaPedidosEndpointV1040:true,entregaTransportadoraV1041:true,modoLeveV1042:true,hashEstavelV1042:true,pollingInteligenteV1042:true,firebaseRealtimeOffV1042:true,canceladosForaV1043:true,flexMantidoV1043:true,entregaRetiradaCorrigidaV1043:true,hotfixRetiradaFinalizadaV1044:true,semReferenceErrorV1044:true,hotfixIsDeliveredV1045:true,semBootErrorV1045:true,hotfixIsFlexIndicatorV1046:true,semBootErrorV1046:true,version:"V10.46-HOTFIX-ISFLEXINDICATOR-SEM-BOOT-ERROR",date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFontePlanilha:false,apiWorkerFirst:EASYPANEL_URL,planilhaBridgeUrlOpcional:PLANILHA_BRIDGE_URL,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
+    today:async()=>{state.date=todayISO(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; await loadData(true); render();},refresh:async()=>{await loadData(true); render();},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,definirOperador,operadorAtual,produtosText,pagamentoText,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{linhaAoVivoMultipontos:true,statusRealtimeFix:true,retiradaRecebedorFix:true,rotaCalculadaFix:true,entreguesComprovantesFix:true,entreguesFirebaseDireto:true,leituraInteligenteV1019:true,realtimeInstantaneo:true,retiradaInteligente:true,firebaseLimpoV1020:true,semPedidoFantasma:true,realtimeLimitado:true,retiradaOlistV1021:true,rotasRecolhiveis:true,botaoMapaPedido:true,retiradaCodigoRD:true,separacaoSemRetirada:true,mapaSpV1023:true,geocodeSaoPaulo:true,semBotaoCorrigirEndereco:true,easyPanelFirstV1024:true,appsScriptEmergencia:true,atualizarViaEasyPanel:true,mobilePendenciaV1027:true,pendenciaFirebaseFirst:true,mobileCardsV1027:true,renderSeparadosFixV1027:true,separadosHojeDataRealV1027:true,mobileFullV1027:true,frontendMarketplaceCleanV1027:true,pendenciaNaoEntregaV1028:true,operadorRotaEntreguesV1028:true,planilhaStatusVetoV1029:true,rotasSomenteDataV1030:true,prontoIncluiSeparadosHojeV1031:true,flexApiFallbackV1031:true,enderecoLeituraAmpliadaV1031:true,prontoSomenteSeparadosDiaV1032:true,motoristasSomenteRotasDiaV1032:true,enderecoMestrePreservadoV1032:true,renderLeveV1032:true,performanceV1035:true,mapaLeveV1035:true,tabelasLimitadasV1035:true,planilhaFirstV1037:true,planilhaInstantV1038:true,pollingPlanilhaV1038:true,separacaoIncluiRetiradaV1038:true,workerFirstV1039:true,snapshotLiteFirstV1039:true,semAppsScriptAntigoV1039:true,workerPlanilhaV1040:true,planilhaPedidosEndpointV1040:true,entregaTransportadoraV1041:true,modoLeveV1042:true,hashEstavelV1042:true,pollingInteligenteV1042:true,firebaseRealtimeOffV1042:true,canceladosForaV1043:true,flexMantidoV1043:true,entregaRetiradaCorrigidaV1043:true,hotfixRetiradaFinalizadaV1044:true,semReferenceErrorV1044:true,hotfixIsDeliveredV1045:true,semBootErrorV1045:true,hotfixIsFlexIndicatorV1046:true,semBootErrorV1046:true,flexWorkerV1047:true,regraFlexPlanilhaV1047:true,mapaPingsV1047:true,erpValorNumeroFixV1048:true,pingsPersistentesV1048:true,flexAutorecoveryV1049:true,flexSempreCarregadoV1049:true,version:"V10.49-FLEX-AUTORECOVERY",date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFontePlanilha:false,apiWorkerFirst:EASYPANEL_URL,planilhaBridgeUrlOpcional:PLANILHA_BRIDGE_URL,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,flexDiagnostics:state.lastFlexDiagnostics||state.lastFlexPayload?.diagnostics||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
   window.VESCO_FORCE_PLANILHA = async function(){ return await refreshPlanilhaInstantanea(true); };
   window.VESCO_FORCE_SNAPSHOT_LITE = async function(){ const ok = await refreshFromEasyPanel(false); render(); return ok; };
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",init); else init();
-  console.log("VESCO V10.46 ativo — hotfix isFlexIndicator e boot sem ReferenceError.");
+  console.log("VESCO V10.49 ativo — Flex carregado independentemente do snapshot ERP e com auto-recuperação.");
 })();
