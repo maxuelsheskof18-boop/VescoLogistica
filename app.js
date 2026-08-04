@@ -2591,3 +2591,29 @@ window.VESCO_APP_DEBUG = function(){
 };
 
 console.log("VESCO app.js V10.34-WORKER-COMPAT ativo — ERP pelo vesco-worker e Flex preservado.");
+
+
+// ============================================================
+// VESCO_LEGACY_PERFORMANCE_V10_35 — camada leve para app.js legado
+// ============================================================
+(function(){
+  if(window.VESCO_LEGACY_PERFORMANCE_V10_35) return;
+  window.VESCO_LEGACY_PERFORMANCE_V10_35 = true;
+  const LIMIT = Number(window.VESCO_TABLE_LIMIT || 120);
+  const origRender = typeof window.render === 'function' ? window.render : null;
+  let renderTimer = null;
+  if(origRender){
+    window.render = function(){
+      clearTimeout(renderTimer);
+      renderTimer = setTimeout(()=>{ try{ origRender(); }catch(e){ console.error('render legado protegido', e); } }, 40);
+    };
+  }
+  const origSwitch = typeof window.switchTab === 'function' ? window.switchTab : null;
+  if(origSwitch){
+    window.switchTab = function(which){
+      requestAnimationFrame(()=>origSwitch(which));
+    };
+  }
+  window.VESCO_PERF_LEGACY_DEBUG = () => ({version:'V10.35', limit:LIMIT});
+  console.log('VESCO legacy performance V10.35 ativo');
+})();

@@ -1,8 +1,22 @@
-<!-- VESCO CONTROL V10.28 -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="styles.css?v=1028" />
-<link rel="stylesheet" href="vesco-v8-operacional.css?v=1028" />
-<script src="firebase-config.js?v=1028"></script>
+<!-- VESCO CONTROL V10.35 — ordem única recomendada -->
+<link rel="stylesheet" href="styles.css?v=1035" />
+<link rel="stylesheet" href="vesco-v8-operacional.css?v=1035" />
+
+<script>
+  window.VESCO_API_URL = window.VESCO_API_URL || "https://script.google.com/macros/s/AKfycbxEzbxBABMDwi7B7tn_1p-lC0vc50JjHFOrH3w42Oog2-5R2-WMYSrQ27ED7wduJUN6/exec";
+  window.VESCO_API_FLEX_URL = "https://script.google.com/macros/s/AKfycbyJXPpN3D8yrcRb0LCy8CY8vegzzF-vKkj7YPmx8WVGouAhBvj_5D_qxhSfyIYTacL1/exec";
+  window.VESCO_EASYPANEL_URL = "https://atendente-vesco-worker.2cwhzy.easypanel.host";
+  window.VESCO_FIREBASE_ROOT = "vesco_operacao_v2";
+  window.VESCO_TABLE_LIMIT = 120;
+  window.VESCO_MAP_LIMIT = 120;
+  window.VESCO_AUTO_GEOCODE = false;
+  window.VESCO_ROUTE_LINE = false;
+</script>
+
+<script src="firebase-config.js?v=1035"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="modulo.vesco-v8-operacional.js?v=1028"></script>
-<script src="vesco-firebase-realtime.js?v=1028"></script>
+<script src="modulo.vesco-v8-operacional.js?v=1035"></script>
+<script src="vesco-firebase-realtime.js?v=1035"></script>
+<script src="painel_motorista_link_v22.js?v=1035"></script>
+
+<!-- Não carregue app.js ou outro módulo operacional nesta mesma página. -->

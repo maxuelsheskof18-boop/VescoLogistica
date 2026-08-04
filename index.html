@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#071426" />
   <meta name="description" content="VESCO CONTROL — Logística Inteligente" />
   <title>VESCO CONTROL — Logística Inteligente</title>
@@ -17,8 +17,8 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
 
-  <link rel="stylesheet" href="styles.css?v=1039" />
-  <link rel="stylesheet" href="vesco-v8-operacional.css?v=1039" />
+  <link rel="stylesheet" href="styles.css?v=1043" />
+  <link rel="stylesheet" href="vesco-v8-operacional.css?v=1043" />
 
   <style>
     html,body{margin:0;min-height:100%;background:#eaf2fb;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
@@ -31,10 +31,6 @@
     .vesco-boot-loader span{display:block;height:100%;width:42%;border-radius:inherit;background:linear-gradient(90deg,#22d3ee,#22c55e,#1769ff);animation:vescoBoot 1.15s infinite ease-in-out}
     @keyframes vescoBoot{0%{transform:translateX(-110%)}100%{transform:translateX(260%)}}
     .vesco-boot-error{margin-top:16px;padding:12px;border-radius:14px;display:none;background:rgba(239,68,68,.14);border:1px solid rgba(248,113,113,.38);color:#fecaca;text-align:left;font-size:12px;line-height:1.45;font-weight:700}
-  </style>
-
-  <style id="v1039CriticalResponsive">
-    @media(max-width:1024px){html,body,#v8Shell,#v8Main,#v8Content{width:100%!important;min-width:0!important;max-width:100%!important;box-sizing:border-box!important}html,body{overflow-x:hidden!important}.v91-separacao-table,.v92-separacao-table,table.v8-table{min-width:0!important;max-width:100%!important}}
   </style>
 </head>
 
@@ -56,16 +52,26 @@
   </noscript>
 
   <script>
-    window.VESCO_BUILD_VERSION = "V10.39-FLEX-HISTORICO";
-    window.VESCO_INDEX_VERSION = "index-v10.39-flex-historico";
-    window.VESCO_API_URL = window.VESCO_API_URL || "https://atendente-vesco-worker.2cwhzy.easypanel.host/api";
-    window.VESCO_API_FLEX_URL = window.VESCO_API_FLEX_URL || "https://script.google.com/macros/s/AKfycbyJXPpN3D8yrcRb0LCy8CY8vegzzF-vKkj7YPmx8WVGouAhBvj_5D_qxhSfyIYTacL1/exec";
+    window.VESCO_BUILD_VERSION = "V10.43";
+    window.VESCO_INDEX_VERSION = "index-v10.43";
+    window.VESCO_API_URL = window.VESCO_API_URL || "https://script.google.com/macros/s/AKfycbwQ8-Rn-zZJQM0fLm9js3ErtJZefRnHP55E3M0r3Z_TIXS_skTioZ6p3yHqTLFYxPU9/exec";
+    window.VESCO_API_FLEX_URL = window.VESCO_API_FLEX_URL || "https://script.google.com/macros/s/AKfycbzDp2qs2S_MxDc_3afY1TurNKYEwfYKkk2cc4IliNxLiVaJuSKYyRqofOUMnhdFBjwNwg/exec";
     window.VESCO_EASYPANEL_URL = window.VESCO_EASYPANEL_URL || "https://atendente-vesco-worker.2cwhzy.easypanel.host";
-    window.VESCO_FIREBASE_ROOT = window.VESCO_FIREBASE_ROOT || "vesco_operacao_v2";
-    window.VESCO_MAIN_SOURCE = "vesco-worker";
-
     // Não recomendo deixar secret no frontend público. Se quiser que o botão Atualizar force /sync, preencha abaixo.
     window.VESCO_EASYPANEL_SECRET = window.VESCO_EASYPANEL_SECRET || "";
+    window.VESCO_FIREBASE_ROOT = window.VESCO_FIREBASE_ROOT || "vesco_operacao_v2";
+    window.VESCO_AUTO_GEOCODE = false;
+    window.VESCO_ROUTE_LINE = false;
+    window.VESCO_TABLE_LIMIT = 120;
+        window.VESCO_PLANILHA_FIRST = true;
+    window.VESCO_PLANILHA_INSTANT = true;
+    window.VESCO_PLANILHA_POLL_MS = 2500;
+    window.VESCO_MAP_LIMIT = 120;
+    window.VESCO_PLANILHA_WEB_APP_URL = window.VESCO_PLANILHA_WEB_APP_URL || "";
+    window.VESCO_TABLE_LIMIT = window.VESCO_TABLE_LIMIT || 120;
+    window.VESCO_MAP_LIMIT = window.VESCO_MAP_LIMIT || 120;
+    window.VESCO_AUTO_GEOCODE = false;
+    window.VESCO_ROUTE_LINE = false;
 
 
     window.addEventListener("error", function(ev){
@@ -82,21 +88,11 @@
     });
   </script>
 
-  <!--
-    ORDEM ÚNICA:
-    1. Firebase
-    2. Leaflet
-    3. Núcleo VESCO V8 atualizado para o vesco-worker
-    4. Listener realtime
-
-    Não carregue app.js, app.state.js, módulos V7/V9 ou modulo.rotas.js junto.
-    Eles duplicam o núcleo e podem sobrescrever pedidos, rotas e listeners.
-  -->
-  <script src="firebase-config.js?v=1039"></script>
+  <script src="firebase-config.js?v=1043"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-  <script src="modulo.vesco-v8-operacional.js?v=1039"></script>
-  <script src="vesco-firebase-realtime.js?v=1039"></script>
-  <script src="vesco-mobile-v10.39.js?v=1039"></script>
+  <script src="modulo.vesco-v8-operacional.js?v=1043"></script>
+  <script src="vesco-firebase-realtime.js?v=1043"></script>
+  <script src="painel_motorista_link_v22.js?v=1043"></script>
 
   <script>
     (function(){
@@ -110,9 +106,9 @@
       }
 
       function checkReady(){
-        if (window.VescoV8 && window.VescoV8.__v1039) {
+        if (window.VescoV8 && window.VescoV8.__v1035) {
           hideBoot();
-          console.log("VESCO index V10.39 carregado — Flex, histórico diário e sincronização rápida.");
+          console.log("VESCO index V10.43 carregado com sucesso.");
           return true;
         }
         return false;
@@ -128,7 +124,7 @@
               var box = document.getElementById("vescoBootError");
               if (box) {
                 box.style.display = "block";
-                box.textContent = "O módulo V10.39 não iniciou. Publique juntos os cinco arquivos do pacote V10.39."
+                box.textContent = "O módulo V10.43 não iniciou. Confirme se modulo.vesco-v8-operacional.js está no GitHub/Vercel.";
               }
             }
           }
@@ -139,12 +135,7 @@
         return {
           index: window.VESCO_INDEX_VERSION,
           build: window.VESCO_BUILD_VERSION,
-          fontePrincipal: window.VESCO_MAIN_SOURCE,
-          apiPrincipal: window.VESCO_API_URL,
-          apiFlex: window.VESCO_API_FLEX_URL,
-          firebaseRoot: window.VESCO_FIREBASE_ROOT,
           VescoV8: !!window.VescoV8,
-          mobile: window.VescoMobileV1039 && window.VescoMobileV1039.debug ? window.VescoMobileV1039.debug() : null,
           debug: window.VescoV8 && window.VescoV8.debug ? window.VescoV8.debug() : null
         };
       };
