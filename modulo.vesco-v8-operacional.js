@@ -137,7 +137,7 @@
       o&&o.raw&&o.raw.transporte&&o.raw.transporte.nome
     ].map(v=>String(v||'').trim()).filter(Boolean);
     for(const v of vals){
-      const n=normalize(v);
+      const n=norm(v);
       if(!n||n==='0'||n==='-'||n==='nao definida'||n==='nao definido'||n==='sem transportadora') continue;
       // T/X/R/D são códigos, não nome da transportadora.
       if(/^[txrd]$/i.test(v)) continue;
@@ -400,35 +400,66 @@
   }
   function value(o){ const v = pick(o,["valor_num","valor_total","valorPedido","valor_pedido","valor","total","total_pedido","preco_total","preco","valor_nf","valor_venda","receita"]); return parseMoney(v); }
   
+
+
+  function isRetiradaFinalizada(o){
+    // V10.45: função defensiva para não quebrar o boot.
+    // Retirada finalizada só vale quando houver status final ou data/campo real de retirada.
+    const s=norm([
+      statusAll(o),
+      pick(o,["status_retirada","statusRetirada","tipo_finalizacao","tipoFinalizacao"]),
+      pick(o,["retirada_confirmada","retiradaConfirmada"]),
+      pick(o,["retirado_em","retirada_em","data_retirada","confirmado_retirado_em"])
+    ].map(txt).join(" | "));
+    const hasData=!!txt(pick(o,[
+      "retirado_em","retirada_em","data_retirada","confirmado_retirado_em",
+      "nome_recebedor","recebedor","doc_recebedor"
+    ]));
+    if(String(pick(o,["retirada_confirmada","retiradaConfirmada"])).toLowerCase()==="true") return true;
+    if(hasData && (s.includes("retir") || isRetirada(o))) return true;
+    return s.includes("retirada finalizada") || s.includes("retirada concluida") ||
+      s.includes("retirada concluída") || s.includes("retirado") || s.includes("confirmado retirado");
+  }
+
   function isRetirada(o){
+    // V10.45: transportadora/código de entrega vence qualquer heurística de retirada.
     if(transportadoraRealPainel(o) || hasTransportCodeEntrega(o)) return false;
     if(retiradaCodigoFields(o)) return true;
-    const raw=formaText(o)+" | "+txt(pick(o,["tipo_finalizacao","tipoFinalizacao","retirada_confirmada","motivo","status_logistica","situacao_nome"]));
+    const raw=formaText(o)+" | "+txt(pick(o,[
+      "tipo_finalizacao","tipoFinalizacao","retirada_confirmada","motivo",
+      "status_logistica","situacao_nome","tipo_entrega","tipoEntrega"
+    ]));
     const s=norm(raw);
     return String(pick(o,["retirada_confirmada"])).toLowerCase()==="true" ||
       s.includes("retirada") || s.includes("retirado") ||
       s.includes("retirar pessoalmente") || s.includes("retira pessoalmente") ||
       s.includes("retirar na loja") || s.includes("retirar no local") ||
       s.includes("cliente retira") || s.includes("cliente retira na loja") ||
-      s.includes("pickup") || s.includes("pick-up") ||
+      s.includes("pickup") || s.includes("pick up") || s.includes("pick-up") ||
       ["747632298","758290131","860463094"].some(id=>raw.includes(id));
   }
 
   function isCancelledOrderFront(o){
-    const s=norm([statusAll(o), pick(o,["situacao_tiny","situacao","status","status_logistica"]), pick(o,["cancelado","canceled","is_cancelled"]), pick(o,["raw.situacao"])].map(txt).join(" | "));
-    return s.includes("cancelado") || s.includes("cancelada") || s.includes("canceled") || s.includes("cancelled");
+    const s=norm([
+      statusAll(o),
+      pick(o,["situacao_tiny","situacao","status","status_logistica","situacao_nome"]),
+      pick(o,["cancelado","canceled","is_cancelled","cancelled"])
+    ].map(txt).join(" | "));
+    return s.includes("cancelado") || s.includes("cancelada") ||
+      s.includes("canceled") || s.includes("cancelled");
   }
 
   function isDelivered(o){
-    // V10.29: se a planilha/Firebase principal diz A Separar ou Pendência, não é entregue.
-    // is_delivered antigo deixado por bug não vale sozinho.
+    // V10.45: função restaurada. Evita ReferenceError e impede que A Separar/Pendência vire Entregue.
     const s=norm(statusAll(o));
-
-    if(planilhaStatusVetaEntregue(o)) return false;
-
-    if(String(pick(o,["is_delivered"])).toLowerCase()==="true" && hasComprovanteEntregaReal(o)) return true;
+    if(isCancelledOrderFront(o)) return false;
+    if(typeof planilhaStatusVetaEntregue === "function" && planilhaStatusVetaEntregue(o)) return false;
     if(isRetiradaFinalizada(o)) return true;
+    const hasRealProof = typeof hasComprovanteEntregaReal === "function" ? hasComprovanteEntregaReal(o) : !!txt(pick(o,["entregue_em","data_entrega_realizada","nome_recebedor","recebedor"]));
+    if(String(pick(o,["is_delivered","entregue"])).toLowerCase()==="true" && hasRealProof) return true;
+    if(deliveryDate(o)) return true;
 
+    // Estados intermediários não são entrega final.
     if(
       s.includes("nao entregue") || s.includes("não entregue") ||
       s.includes("a entregar") || s.includes("saiu para entrega") ||
@@ -436,33 +467,16 @@
       s.includes("pendencia") || s.includes("pendência") ||
       s.includes("a separar") || s.includes("em separacao") ||
       s.includes("em separação") || s.includes("separado") ||
-      s.includes("pronto")
+      s.includes("pronto para envio") || s.includes("pronto para rota") ||
+      s.includes("pronto") || s.includes("em aberto")
     ) return false;
-    if(deliveryDate(o)) return true;
-    // Faturado não é entregue. Só sai da Logística quando for Entregue/Finalizado/Concluído/Retirado ou tiver data real.
-    return s==="entregue" || s==="retirado" || s==="finalizado" || s==="finalizada" ||
-      s==="concluido" || s==="concluído" || s.includes("entrega realizada") ||
-      s.includes("pedido entregue") || s.includes("confirmado entregue");
+
+    return s==="entregue" || s==="finalizado" || s==="finalizada" ||
+      s==="concluido" || s==="concluído" ||
+      s.includes("entrega realizada") || s.includes("pedido entregue") ||
+      s.includes("confirmado entregue");
   }
 
-  function isFlexIndicator(o){
-    if(String(pick(o,["is_flex"])).toLowerCase()==="true") return true;
-    const raw=formaText(o);
-    const s=norm(raw);
-    return raw.includes("780391986") || !!pick(o,["id_flex","flex_id","numero_flex","id_envio_flex"]) || s.includes("mercado envios flex") || s.includes("envios flex") || s.includes(" flex");
-  }
-  function isRetirada(o){
-    if(retiradaCodigoFields(o)) return true;
-    const raw=formaText(o)+" | "+txt(pick(o,["tipo_finalizacao","tipoFinalizacao","retirada_confirmada","motivo","status_logistica","situacao_nome"]));
-    const s=norm(raw);
-    return String(pick(o,["retirada_confirmada"])).toLowerCase()==="true" ||
-      s.includes("retirada") || s.includes("retirado") ||
-      s.includes("retirar pessoalmente") || s.includes("retira pessoalmente") ||
-      s.includes("retirar na loja") || s.includes("retirar no local") ||
-      s.includes("cliente retira") || s.includes("cliente retira na loja") ||
-      s.includes("pickup") || s.includes("pick-up") ||
-      ["747632298","758290131","860463094"].some(id=>raw.includes(id));
-  }
   function hasAddress(o){ const a=norm(address(o)); if(!a || a==="-" || a==="—") return false; return !(a.includes("endereco nao disponivel") || a.includes("endereço não disponível") || a.includes("sem endereco") || a.includes("sem endereço") || a.includes("nao informado") || a.includes("não informado")); }
 
   
@@ -561,7 +575,7 @@ function coords(o){
     n.marcador_flex_id = flexMarker(n);
     const c = coords(n); if(c){ n.lat=c.lat; n.lon=c.lon; }
     n.is_delivered = isDelivered(n);
-    n.is_flex = src === "flex" || isFlexIndicator(n);
+    n.is_flex = src === "flex" || (typeof isFlexIndicator === "function" ? isFlexIndicator(n) : false);
     n.is_retirada = isRetirada(n);
     n.has_address = hasAddress(n);
     return n;
@@ -654,6 +668,20 @@ function coords(o){
       "idMarcacaoPsq","id_marcacao_psq","marcador_id",
       "marcacao_id","idMarcador"
     ])).trim();
+  }
+  function isFlexIndicator(o){
+    // V10.46: função defensiva restaurada para evitar ReferenceError no boot.
+    // Indica Flex apenas quando há marcador Flex real/validado ou origem explicitamente Flex.
+    if(!o || typeof o!=="object") return false;
+    const source = txt(pick(o,["__v8source","__source","source","origem","tipo_origem","canal"])).toLowerCase();
+    if(source === "flex" || source.includes("mercado envios flex") || source.includes("mercado livre flex")) return true;
+    if(VALID_FLEX_MARKERS.has(flexMarker(o))) return true;
+    const raw = norm([
+      pick(o,["tipo_entrega","tipoEntrega","tipo_envio","forma_envio_nome","forma_envio","transportadora"]),
+      pick(o,["marcador_validado_no_detalhe","validado_flex","validadoFlex","marker_validated","markerValidated"]),
+      pick(o,["tags","marcadores","labels"])
+    ].map(txt).join(" | "));
+    return raw.includes("mercado envios flex") || raw.includes("envios flex") || raw.includes(" flex ") || raw.includes("marcador confirmado");
   }
   function isStrictFlexMarker(o){ return VALID_FLEX_MARKERS.has(flexMarker(o)); }
   function flexValidated(o){
@@ -4519,9 +4547,9 @@ function renderMap(type,forceFit=false,listOverride=null){
     runFlexGeocode,statusFlexGeocode,autoGeocodeMap,geocodeAddressViaFlexApi,openMapForOrder,openGoogleMapsForList,googleMapsDirectionsUrlFromOrders,
     renderTarefasFrota,registrarTarefaFrota,concluirTarefaFrota,removerTarefaFrota,tarefasFrotaList,
     sidebar:()=>{state.sidebarCollapsed=!state.sidebarCollapsed; document.body.classList.toggle("v8-sidebar-collapsed",state.sidebarCollapsed); localStorage.setItem("vesco:v8:sidebarCollapsed",state.sidebarCollapsed?"1":"0");},
-    today:async()=>{state.date=todayISO(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; await loadData(true); render();},refresh:async()=>{await loadData(true); render();},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,definirOperador,operadorAtual,produtosText,pagamentoText,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{linhaAoVivoMultipontos:true,statusRealtimeFix:true,retiradaRecebedorFix:true,rotaCalculadaFix:true,entreguesComprovantesFix:true,entreguesFirebaseDireto:true,leituraInteligenteV1019:true,realtimeInstantaneo:true,retiradaInteligente:true,firebaseLimpoV1020:true,semPedidoFantasma:true,realtimeLimitado:true,retiradaOlistV1021:true,rotasRecolhiveis:true,botaoMapaPedido:true,retiradaCodigoRD:true,separacaoSemRetirada:true,mapaSpV1023:true,geocodeSaoPaulo:true,semBotaoCorrigirEndereco:true,easyPanelFirstV1024:true,appsScriptEmergencia:true,atualizarViaEasyPanel:true,mobilePendenciaV1027:true,pendenciaFirebaseFirst:true,mobileCardsV1027:true,renderSeparadosFixV1027:true,separadosHojeDataRealV1027:true,mobileFullV1027:true,frontendMarketplaceCleanV1027:true,pendenciaNaoEntregaV1028:true,operadorRotaEntreguesV1028:true,planilhaStatusVetoV1029:true,rotasSomenteDataV1030:true,prontoIncluiSeparadosHojeV1031:true,flexApiFallbackV1031:true,enderecoLeituraAmpliadaV1031:true,prontoSomenteSeparadosDiaV1032:true,motoristasSomenteRotasDiaV1032:true,enderecoMestrePreservadoV1032:true,renderLeveV1032:true,performanceV1035:true,mapaLeveV1035:true,tabelasLimitadasV1035:true,planilhaFirstV1037:true,planilhaInstantV1038:true,pollingPlanilhaV1038:true,separacaoIncluiRetiradaV1038:true,workerFirstV1039:true,snapshotLiteFirstV1039:true,semAppsScriptAntigoV1039:true,workerPlanilhaV1040:true,planilhaPedidosEndpointV1040:true,entregaTransportadoraV1041:true,modoLeveV1042:true,hashEstavelV1042:true,pollingInteligenteV1042:true,firebaseRealtimeOffV1042:true,canceladosForaV1043:true,flexMantidoV1043:true,entregaRetiradaCorrigidaV1043:true,version:"V10.43-CANCELADOS-FLEX-ENTREGA",date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFontePlanilha:false,apiWorkerFirst:EASYPANEL_URL,planilhaBridgeUrlOpcional:PLANILHA_BRIDGE_URL,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
+    today:async()=>{state.date=todayISO(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; await loadData(true); render();},refresh:async()=>{await loadData(true); render();},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,definirOperador,operadorAtual,produtosText,pagamentoText,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{linhaAoVivoMultipontos:true,statusRealtimeFix:true,retiradaRecebedorFix:true,rotaCalculadaFix:true,entreguesComprovantesFix:true,entreguesFirebaseDireto:true,leituraInteligenteV1019:true,realtimeInstantaneo:true,retiradaInteligente:true,firebaseLimpoV1020:true,semPedidoFantasma:true,realtimeLimitado:true,retiradaOlistV1021:true,rotasRecolhiveis:true,botaoMapaPedido:true,retiradaCodigoRD:true,separacaoSemRetirada:true,mapaSpV1023:true,geocodeSaoPaulo:true,semBotaoCorrigirEndereco:true,easyPanelFirstV1024:true,appsScriptEmergencia:true,atualizarViaEasyPanel:true,mobilePendenciaV1027:true,pendenciaFirebaseFirst:true,mobileCardsV1027:true,renderSeparadosFixV1027:true,separadosHojeDataRealV1027:true,mobileFullV1027:true,frontendMarketplaceCleanV1027:true,pendenciaNaoEntregaV1028:true,operadorRotaEntreguesV1028:true,planilhaStatusVetoV1029:true,rotasSomenteDataV1030:true,prontoIncluiSeparadosHojeV1031:true,flexApiFallbackV1031:true,enderecoLeituraAmpliadaV1031:true,prontoSomenteSeparadosDiaV1032:true,motoristasSomenteRotasDiaV1032:true,enderecoMestrePreservadoV1032:true,renderLeveV1032:true,performanceV1035:true,mapaLeveV1035:true,tabelasLimitadasV1035:true,planilhaFirstV1037:true,planilhaInstantV1038:true,pollingPlanilhaV1038:true,separacaoIncluiRetiradaV1038:true,workerFirstV1039:true,snapshotLiteFirstV1039:true,semAppsScriptAntigoV1039:true,workerPlanilhaV1040:true,planilhaPedidosEndpointV1040:true,entregaTransportadoraV1041:true,modoLeveV1042:true,hashEstavelV1042:true,pollingInteligenteV1042:true,firebaseRealtimeOffV1042:true,canceladosForaV1043:true,flexMantidoV1043:true,entregaRetiradaCorrigidaV1043:true,hotfixRetiradaFinalizadaV1044:true,semReferenceErrorV1044:true,hotfixIsDeliveredV1045:true,semBootErrorV1045:true,hotfixIsFlexIndicatorV1046:true,semBootErrorV1046:true,version:"V10.46-HOTFIX-ISFLEXINDICATOR-SEM-BOOT-ERROR",date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFontePlanilha:false,apiWorkerFirst:EASYPANEL_URL,planilhaBridgeUrlOpcional:PLANILHA_BRIDGE_URL,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
   window.VESCO_FORCE_PLANILHA = async function(){ return await refreshPlanilhaInstantanea(true); };
   window.VESCO_FORCE_SNAPSHOT_LITE = async function(){ const ok = await refreshFromEasyPanel(false); render(); return ok; };
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",init); else init();
-  console.log("VESCO V10.42 ativo — modo leve: polling inteligente, hash estável e sem Firebase realtime pesado.");
+  console.log("VESCO V10.46 ativo — hotfix isFlexIndicator e boot sem ReferenceError.");
 })();
