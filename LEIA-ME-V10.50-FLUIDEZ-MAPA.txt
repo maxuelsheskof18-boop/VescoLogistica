@@ -1,0 +1,52 @@
+VESCO CONTROL — DASHBOARD V10.50
+FLUIDEZ + MAPA INTELIGENTE
+
+O QUE FOI CORRIGIDO
+
+1. Atualização sem travar a tela
+- O botão Atualizar não abre mais a camada de carregamento em tela cheia quando o painel já está aberto.
+- ERP e Flex são relidos em paralelo.
+- O sync do EasyPanel é disparado em segundo plano.
+- O painel faz conferências rápidas após 1,2 s, 3,2 s e 7 s.
+
+2. Menos requisições e menos renderizações
+- Cache de 30 segundos para patches do Firebase.
+- Polling adaptativo: 8 segundos normalmente e 2,2 segundos durante 45 segundos após clicar Atualizar.
+- Renderização agrupada em requestAnimationFrame.
+- Gravação de snapshot no Firebase não bloqueia o carregamento.
+
+3. Endereços mais corretos
+- Remove referência e endereço duplicado sem apagar bairro/cidade.
+- Padroniza CEP.
+- Consulta ViaCEP para confirmar logradouro, bairro, cidade e UF antes de geocodificar.
+- Rejeita coordenadas incompatíveis com endereço de São Paulo.
+
+4. Mapa progressivo
+- O mapa abre imediatamente com as coordenadas já existentes.
+- Endereços faltantes são localizados em lotes paralelos de 3.
+- Os pings aparecem progressivamente, sem recarregar a tela inteira.
+- Coordenadas ficam em cache local por até 90 dias e continuam sendo gravadas no Firebase.
+- Endereços iguais são geocodificados uma única vez.
+- O mapa preserva a última posição/zoom durante atualizações.
+- Tiles do OpenStreetMap usam conexão antecipada e buffer maior.
+
+PUBLICAÇÃO
+
+1. Substitua no GitHub/Vercel todo o conteúdo do dashboard pela pasta deste pacote.
+2. Confirme que o arquivo principal se chama index.html.
+3. Aguarde o deploy da Vercel.
+4. Abra o painel e pressione Ctrl + F5.
+
+CONFIRMAÇÃO
+
+No console deve aparecer:
+VESCO index V10.50 carregado com sucesso.
+VESCO V10.50 ativo — Flex carregado independentemente do snapshot ERP e com auto-recuperação.
+
+Execute:
+VescoV8.debug()
+
+O campo version deve retornar:
+V10.50-FLUIDEZ-MAPA-INTELIGENTE
+
+Não é necessário alterar o Tiny Worker pai, worker filho ou Apps Script para esta atualização visual e de mapa.

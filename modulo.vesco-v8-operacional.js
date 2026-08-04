@@ -1,5 +1,5 @@
-// modulo.vesco-v8-operacional.js — V10.41 WORKER-PLANILHA / INSTANTANEO
-// Base V10.41 + polling inteligente, hash estável e Firebase realtime desligado por padrão para não travar.
+// modulo.vesco-v8-operacional.js — V10.52 MOBILE COMPLETO + NAVEGAÇÃO INSTANTÂNEA
+// Base V10.51 preservada, com camada mobile completa, paginação adaptativa e navegação touch.
 
 (function(){
   if (window.VescoV8 && window.VescoV8.__v1040) return;
@@ -32,8 +32,15 @@
     routeDirections: {},
     tarefas: [],
     rotaFlexExtras: [],
+    routeSelection: {},
     geoAutoRunning: {},
     geoCache: {},
+    geoPersistentCache: {},
+    cepCache: {},
+    orderPatchesCache: {},
+    orderPatchesCacheAt: 0,
+    mapViews: {},
+    mapFitKeys: {},
     flexArchive: {},
     flexMonthView: todayISO().slice(0,7),
     motoristasLocalizacao: {},
@@ -47,16 +54,32 @@
     snapshotSeparadosHoje: [],
     hasSnapshotSeparadosHoje: false,
     snapshotEntreguesHoje: [],
-    hasSnapshotEntreguesHoje: false
+    hasSnapshotEntreguesHoje: false,
+    pageByTab: {},
+    perfRevision: 1,
+    badgeCacheRevision: -1,
+    badgeCache: null,
+    derivedCache: null,
+    derivedCacheKey: "",
+    lastRenderedTab: "",
+    userNavigatingUntil: 0,
+    renderToken: 0
   };
 
   // V10.35 — Performance / fluidez
-  const VESCO_PERF_VERSION = "V10.37-PLANILHA-FIRST-ERP-VISIVEL";
+  const VESCO_PERF_VERSION = "V10.52-MOBILE-COMPLETO-TOUCH";
   const VESCO_TABLE_LIMIT = Number(window.VESCO_TABLE_LIMIT || 120);
+  const VESCO_PAGE_SIZE = Math.max(20, Math.min(70, Number(window.VESCO_PAGE_SIZE || 24)));
+  const VESCO_MAP_PAGE_SIZE = Math.max(18, Math.min(50, Number(window.VESCO_MAP_PAGE_SIZE || 20)));
   const VESCO_MAP_LIMIT = Number(window.VESCO_MAP_LIMIT || 120);
   const VESCO_AUTO_GEOCODE = window.VESCO_AUTO_GEOCODE === true;
   const VESCO_ROUTE_LINE = window.VESCO_ROUTE_LINE === true;
+  const VESCO_GEO_CONCURRENCY = Math.max(1, Math.min(5, Number(window.VESCO_GEO_CONCURRENCY || 3)));
+  const VESCO_GEO_BATCH_LIMIT = Math.max(5, Math.min(80, Number(window.VESCO_GEO_BATCH_LIMIT || 36)));
+  const VESCO_PATCH_CACHE_MS = Math.max(10000, Number(window.VESCO_PATCH_CACHE_MS || 30000));
+  const VESCO_GEO_CACHE_TTL_MS = Math.max(86400000, Number(window.VESCO_GEO_CACHE_TTL_MS || 7776000000));
   let v1035RenderLock = false;
+  let v1050NominatimChain = Promise.resolve();
 
   function limitRows(list, limit = VESCO_TABLE_LIMIT){
     return Array.isArray(list) ? list.slice(0, Math.max(1, Number(limit)||120)) : [];
@@ -65,6 +88,80 @@
     total = Number(total||0); shown = Number(shown||0);
     if(total <= shown) return "";
     return `<div class="v1035-perf-note"><b>Modo rápido:</b> mostrando ${shown} de ${total} ${esc(label||"registro(s)")}. Use a busca para filtrar ou abra a lista completa apenas quando necessário.</div>`;
+  }
+
+  function invalidatePerfCaches(){
+    state.perfRevision = Number(state.perfRevision||0) + 1;
+    state.badgeCacheRevision = -1;
+    state.badgeCache = null;
+    state.derivedCache = null;
+    state.derivedCacheKey = "";
+  }
+  function derivedLists(){
+    const key=[state.perfRevision,state.date,state.month,state.orders.length,state.flex.length,state.rotas.length].join("|");
+    if(state.derivedCache && state.derivedCacheKey===key) return state.derivedCache;
+    const d={
+      separacao:separacaoList(),
+      pendencias:pendenciasProdutoList(),
+      pronto:prontoList(),
+      logistica:logisticaList(),
+      retiradas:retiradaList(),
+      flex:flexList(),
+      separados:separadosList(),
+      entregues:entreguesList(),
+      tarefas:tarefasFrotaList()
+    };
+    state.derivedCache=d;
+    state.derivedCacheKey=key;
+    return d;
+  }
+  function paginationFor(list, tab=state.tab, pageSize=VESCO_PAGE_SIZE){
+    const rows=Array.isArray(list)?list:[];
+    const size=Math.max(1,Number(pageSize)||VESCO_PAGE_SIZE);
+    const totalPages=Math.max(1,Math.ceil(rows.length/size));
+    let page=Math.max(1,Number(state.pageByTab?.[tab]||1));
+    if(page>totalPages) page=totalPages;
+    state.pageByTab[tab]=page;
+    const start=(page-1)*size;
+    const end=Math.min(rows.length,start+size);
+    return {tab,page,pageSize:size,total:rows.length,totalPages,start,end,items:rows.slice(start,end)};
+  }
+  function pagerHtml(p){
+    if(!p || p.totalPages<=1) return "";
+    const from=p.total? p.start+1 : 0;
+    return `<div class="v1051-pager" role="navigation" aria-label="Paginação">
+      <button class="v8-btn secondary" ${p.page<=1?"disabled":""} onclick="VescoV8.setListPage('${esc(p.tab)}',${p.page-1})">Anterior</button>
+      <span><b>${from}-${p.end}</b> de <b>${p.total}</b> • página ${p.page}/${p.totalPages}</span>
+      <button class="v8-btn secondary" ${p.page>=p.totalPages?"disabled":""} onclick="VescoV8.setListPage('${esc(p.tab)}',${p.page+1})">Próxima</button>
+    </div>`;
+  }
+  function setListPage(tab,page){
+    const t=txt(tab)||state.tab;
+    state.pageByTab[t]=Math.max(1,Number(page)||1);
+    state.userNavigatingUntil=Date.now()+300;
+    const scroller=document.querySelector("#v8Main") || document.scrollingElement;
+    if(scroller) scroller.scrollTop=0;
+    scheduleRender(true);
+  }
+  function resetCurrentPage(){ state.pageByTab[state.tab]=1; }
+  function tabMeta(tab){
+    const all={
+      dashboard:["Dashboard","Resumo executivo da operação em tempo real"],
+      separacao:["Separação","Fila ativa de pedidos ERP ainda não separados."],
+      separados:["Separados Hoje","Pedidos concluídos na data selecionada."],
+      saiu:["Pronto para Envio","Pedidos separados disponíveis para montar rota."],
+      logistica:["Logística ERP","Pedidos ERP pendentes de entrega."],
+      retiradas:["Retiradas","Retiradas e pedidos sem rota."],
+      tarefas:["Tarefas Frota","Tarefas externas da frota."],
+      flex:["Envios Flex","Pedidos Flex do mês."],
+      entregues:["Entregues","Pedidos finalizados na data selecionada."]
+    };
+    return all[tab]||all.dashboard;
+  }
+  function markNavigationBusy(on){
+    document.body.classList.toggle("v1051-nav-busy",!!on);
+    const c=document.getElementById("v8Content");
+    if(c) c.setAttribute("aria-busy",on?"true":"false");
   }
   function defer(fn, ms=30){
     setTimeout(()=>{ try{ fn(); }catch(e){ console.warn("V10.35 defer falhou", e); } }, ms);
@@ -144,6 +241,77 @@
 
 
   
+  function safeLocalJson(key, fallback){
+    try{
+      const raw=localStorage.getItem(key);
+      if(!raw) return fallback;
+      const parsed=JSON.parse(raw);
+      return parsed && typeof parsed==="object" ? parsed : fallback;
+    }catch(e){ return fallback; }
+  }
+  function saveLocalJson(key, value){
+    try{ localStorage.setItem(key, JSON.stringify(value)); return true; }catch(e){ return false; }
+  }
+  function extractCep(v){
+    const m=txt(v).match(/\b(\d{2})\.?\s?(\d{3})-?\s?(\d{3})\b/);
+    return m ? `${m[1]}${m[2]}${m[3]}` : "";
+  }
+  function addressKey(v){
+    return norm(v).replace(/\b(referencia|ref|complemento|observacao)\b.*$/g,"").replace(/\s+/g," ").trim();
+  }
+  function cleanDisplayAddress(v){
+    let a=txt(v);
+    if(!a) return "";
+    a=a.replace(/\s*\|\s*/g,", ").replace(/\s+/g," ").replace(/,\s*,+/g,", ").trim();
+    a=a.replace(/,?\s*(refer[eê]ncia|referencia|ref\.?|observa[cç][aã]o)\s*[:\-]?\s*[^,]+(?:,\s*\d+[A-Za-z\-\/]{0,5})?/ig,"");
+    const parts=a.split(",").map(x=>x.trim()).filter(Boolean);
+    if(parts.length>2){
+      const first=norm(parts[0]);
+      const num=(parts[1].match(/\d+[A-Za-z\-\/]{0,5}/)||[""])[0];
+      const kept=[];
+      for(let i=0;i<parts.length;i++){
+        const n=norm(parts[i]);
+        if(i>1 && first && n.includes(first) && (!num || n.includes(norm(num)))) continue;
+        kept.push(parts[i]);
+      }
+      a=kept.join(", ");
+    }
+    const cep=extractCep(a);
+    if(cep){
+      const fmt=`${cep.slice(0,5)}-${cep.slice(5)}`;
+      a=a.replace(/\b\d{2}\.?\s?\d{3}-?\s?\d{3}\b/,fmt);
+    }
+    return a.replace(/,\s*,+/g,", ").replace(/\s+,/g,",").trim().replace(/^,|,$/g,"").trim();
+  }
+  function loadPersistentCaches(){
+    state.geoPersistentCache=safeLocalJson("vesco:v1050:geoCache",{});
+    state.cepCache=safeLocalJson("vesco:v1050:cepCache",{});
+    const now=Date.now();
+    Object.keys(state.geoPersistentCache||{}).forEach(k=>{
+      const x=state.geoPersistentCache[k];
+      if(!x || !x.ts || now-Number(x.ts)>VESCO_GEO_CACHE_TTL_MS) delete state.geoPersistentCache[k];
+    });
+  }
+  function persistGeoCache(){
+    const entries=Object.entries(state.geoPersistentCache||{}).sort((a,b)=>Number(b[1]?.ts||0)-Number(a[1]?.ts||0)).slice(0,1200);
+    state.geoPersistentCache=Object.fromEntries(entries);
+    saveLocalJson("vesco:v1050:geoCache",state.geoPersistentCache);
+  }
+  function cachedGeoForAddress(v){
+    const key=addressKey(v);
+    if(!key) return null;
+    const x=state.geoPersistentCache?.[key];
+    if(!x || x.status!=="OK" || Date.now()-Number(x.ts||0)>VESCO_GEO_CACHE_TTL_MS) return null;
+    return x;
+  }
+  function rememberGeoForAddress(v, ge){
+    const key=addressKey(v);
+    if(!key || !ge || ge.status!=="OK") return false;
+    state.geoPersistentCache[key]={...ge,ts:Date.now()};
+    persistGeoCache();
+    return true;
+  }
+
   function transportadoraRealPainel(o){
     const vals=[
       o&&o.transportadora,o&&o.transportador,o&&o.nomeTransportador,o&&o.nome_transportador,
@@ -233,7 +401,7 @@
       "endereco","endereço","address","full_address","fullAddress",
       "endereco_entrega","enderecoEntrega","shipping_address","delivery_address"
     ]));
-    if(direct) return direct;
+    if(direct) return cleanDisplayAddress(direct);
 
     const rawObjs=[
       o.raw,o.__raw,o.raw_order,o.pedido_raw,o.detalhe,o.pedido,
@@ -246,7 +414,7 @@
         "endereco","endereço","address","full_address","fullAddress",
         "endereco_entrega","enderecoEntrega","shipping_address","delivery_address"
       ]));
-      if(d) return d;
+      if(d) return cleanDisplayAddress(d);
 
       const nested=[
         r.endereco_entrega,r.enderecoEntrega,r.endereco,r.cliente,r.destinatario,
@@ -257,11 +425,11 @@
           "endereco_completo","enderecoCompleto","endereco completo","endereço completo",
           "endereco","endereço","address","full_address","fullAddress"
         ])) || addressFromParts(n);
-        if(nd) return nd;
+        if(nd) return cleanDisplayAddress(nd);
       }
 
       const byParts=addressFromParts(r);
-      if(byParts) return byParts;
+      if(byParts) return cleanDisplayAddress(byParts);
     }
 
     return "";
@@ -519,29 +687,30 @@
   function looksLikeSPAddress(oOrAddress){
     const raw=typeof oOrAddress==="string" ? oOrAddress : address(oOrAddress);
     const a=norm(raw);
-    const cep=(raw.match(/\b0\d[\d.\- ]{6,10}\b/)||[""])[0];
-    return a.includes("sao paulo-sp") ||
-      a.includes("sao paulo - sp") ||
-      a.includes("sao paulo | sp") ||
-      a.includes(" sao paulo ") ||
-      a.includes("são paulo-sp") ||
-      a.includes("são paulo - sp") ||
-      !!cep;
+    const cep=extractCep(raw);
+    const cepNum=cep?Number(cep):0;
+    const cepSP=cepNum>=1000000 && cepNum<=19999999;
+    return a.includes("sao paulo sp") || a.includes("sao paulo - sp") || a.includes(" sao paulo ") || /(^|\s)sp($|\s)/.test(a) || cepSP;
+  }
+  function explicitSaoPauloCity(oOrAddress){
+    const raw=typeof oOrAddress==="string" ? oOrAddress : address(oOrAddress);
+    const a=norm(raw);
+    return a.includes("sao paulo sp") || a.includes("sao paulo - sp") || /,\s*s[aã]o paulo\s*,?\s*sp/i.test(raw);
   }
   function coordInGrandeSP(lat,lon){
-    return Number.isFinite(lat) && Number.isFinite(lon) &&
-      lat>=-24.35 && lat<=-22.55 &&
-      lon>=-47.65 && lon<=-45.35;
+    return Number.isFinite(lat) && Number.isFinite(lon) && lat>=-24.35 && lat<=-22.55 && lon>=-47.65 && lon<=-45.35;
+  }
+  function coordInEstadoSP(lat,lon){
+    return Number.isFinite(lat) && Number.isFinite(lon) && lat>=-25.45 && lat<=-19.70 && lon>=-53.20 && lon<=-44.00;
   }
   function coordCompatibleWithAddress(oOrAddress, lat, lon){
-    // Evita erro tipo "Rua X - Maranhão | São Paulo-SP" cair no estado do Maranhão.
-    if(looksLikeSPAddress(oOrAddress) && !coordInGrandeSP(lat,lon)) return false;
+    if(explicitSaoPauloCity(oOrAddress) && !coordInGrandeSP(lat,lon)) return false;
+    if(looksLikeSPAddress(oOrAddress) && !coordInEstadoSP(lat,lon)) return false;
     return true;
   }
   function cleanAddressForSPGeocode(addr){
-    let a=txt(addr);
+    let a=cleanDisplayAddress(addr);
     if(!a) return "";
-    a=a.replace(/\s*\|\s*/g,", ").replace(/\s+/g," ").trim();
     const cep=(a.match(/\b\d{2}\.?\d{3}-?\d{3}\b/)||[""])[0];
     const parts=a.split(",").map(x=>x.trim()).filter(Boolean);
     const street=parts[0]||"";
@@ -554,7 +723,7 @@
     return [street,house,city,cep].filter(Boolean).join(", ");
   }
   function geocodeCandidates(addr){
-    const a=txt(addr).replace(/\s*\|\s*/g,", ").replace(/\s+/g," ").trim();
+    const a=cleanDisplayAddress(addr);
     const clean=cleanAddressForSPGeocode(a);
     const cep=(a.match(/\b\d{2}\.?\d{3}-?\d{3}\b/)||[""])[0];
     const out=[];
@@ -568,18 +737,27 @@
     if(a && a!==clean && a!==noNoise) out.push(a);
     return [...new Set(out.map(x=>x.replace(/\s+/g," ").replace(/,\s*,/g,",").trim()).filter(Boolean))];
   }
-  async function geocodeNominatim(query, originalAddress){
-    const url="https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=br&addressdetails=1&q="+encodeURIComponent(query);
-    const res=await fetch(url,{headers:{"Accept":"application/json"}});
-    if(!res.ok) throw new Error("Nominatim HTTP "+res.status);
-    const rows=await res.json();
-    for(const row of rows||[]){
-      const lat=parseFloat(row.lat), lon=parseFloat(row.lon);
-      if(!Number.isFinite(lat)||!Number.isFinite(lon)) continue;
-      if(!coordCompatibleWithAddress(originalAddress,lat,lon)) continue;
-      return {status:"OK",lat,lon,lng:lon,source:"nominatim",display_name:row.display_name,query};
-    }
-    return {status:"ZERO_RESULTS",source:"nominatim",query};
+  async function geocodeNominatimRaw(query, originalAddress){
+    const ctrl=new AbortController();
+    const timer=setTimeout(()=>ctrl.abort(),8000);
+    try{
+      const url="https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=br&addressdetails=1&q="+encodeURIComponent(query);
+      const res=await fetch(url,{headers:{"Accept":"application/json","Accept-Language":"pt-BR"},signal:ctrl.signal,cache:"force-cache"});
+      if(!res.ok) throw new Error("Nominatim HTTP "+res.status);
+      const rows=await res.json();
+      for(const row of rows||[]){
+        const lat=parseFloat(row.lat), lon=parseFloat(row.lon);
+        if(!Number.isFinite(lat)||!Number.isFinite(lon)) continue;
+        if(!coordCompatibleWithAddress(originalAddress,lat,lon)) continue;
+        return {status:"OK",lat,lon,lng:lon,source:"nominatim",display_name:row.display_name,query};
+      }
+      return {status:"ZERO_RESULTS",source:"nominatim",query};
+    }finally{ clearTimeout(timer); }
+  }
+  function geocodeNominatim(query, originalAddress){
+    const task=v1050NominatimChain.then(()=>geocodeNominatimRaw(query,originalAddress));
+    v1050NominatimChain=task.catch(()=>null).then(()=>sleep(1050));
+    return task;
   }
 
 function coords(o){
@@ -612,7 +790,15 @@ function coords(o){
     n.data_separacao_iso = sepDate(n);
     n.valor_num = value(n);
     n.marcador_flex_id = flexMarker(n);
-    const c = coords(n); if(c){ n.lat=c.lat; n.lon=c.lon; }
+    let c = coords(n);
+    if(!c){
+      const cached=cachedGeoForAddress(n.endereco_completo);
+      if(cached){
+        const lat=parseFloat(cached.lat), lon=parseFloat(cached.lon ?? cached.lng);
+        if(coordCompatibleWithAddress(n,lat,lon)){ n.lat=lat; n.lon=lon; n.geocode_status="OK_CACHE_LOCAL_V1050"; n.geocode_source=cached.source||"cache_local"; c={lat,lon}; }
+      }
+    }
+    if(c){ n.lat=c.lat; n.lon=c.lon; }
     n.is_delivered = isDelivered(n);
     n.is_flex = src === "flex" || (typeof isFlexIndicator === "function" ? isFlexIndicator(n) : false);
     n.is_retirada = isRetirada(n);
@@ -1091,9 +1277,19 @@ function coords(o){
     const assigned=routeAssignedKeySet();
     return orderIdentifierSet(o).some(k=>assigned.has(firebaseSafeId(k)));
   }
-  async function getOrderPatchesFirebase(){
-    try{ return await firebaseGet("vesco_operacao/orders", 2500) || {}; }
-    catch(e){ return {}; }
+  async function getOrderPatchesFirebase(force=false){
+    const now=Date.now();
+    if(!force && state.orderPatchesCache && now-Number(state.orderPatchesCacheAt||0)<VESCO_PATCH_CACHE_MS){
+      return state.orderPatchesCache;
+    }
+    try{
+      const rows=await firebaseGet("vesco_operacao/orders", 2200) || {};
+      state.orderPatchesCache=rows;
+      state.orderPatchesCacheAt=Date.now();
+      return rows;
+    }catch(e){
+      return state.orderPatchesCache || {};
+    }
   }
   async function applySnapshot(snap, source){
     if(!snap) return false;
@@ -1121,6 +1317,7 @@ function coords(o){
     state.lastSnapshotSource=source||"snapshot";
     state.loading=false;
     showLoading(false);
+    invalidatePerfCaches();
     updateBadges();
     return true;
   }
@@ -1293,8 +1490,12 @@ function coords(o){
       v1038PlanilhaLastHash = h;
       const ok = await applySnapshot(snap,"planilha_instantanea");
       if(ok && renderAfter){
-        const doRender=()=>{ try{ render(); }catch(e){} };
-        if("requestIdleCallback" in window) requestIdleCallback(doRender,{timeout:1200});
+        const doRender=()=>{
+          const wait=Math.max(0,Number(state.userNavigatingUntil||0)-Date.now());
+          if(wait>0) setTimeout(()=>scheduleRender(),wait+30);
+          else scheduleRender();
+        };
+        if("requestIdleCallback" in window) requestIdleCallback(doRender,{timeout:700});
         else requestAnimationFrame(doRender);
       }
       return ok;
@@ -1308,16 +1509,15 @@ function coords(o){
 
   function startPlanilhaInstantaneaPolling(){
     if(v1038PlanilhaPollTimer) return;
-    const ms = Math.max(5000, Number(window.VESCO_PLANILHA_POLL_MS || 10000));
-    v1038PlanilhaPollTimer = setInterval(()=>{
-      if(document.hidden) return;
-      if(state.loading) return;
+    const normalMs=Math.max(6000,Number(window.VESCO_PLANILHA_POLL_MS||8000));
+    const tick=()=>{
+      if(document.hidden || state.loading) return;
       refreshPlanilhaInstantanea(true);
-      if(window.__vescoFastPollUntil && Date.now() < window.__vescoFastPollUntil){
-        setTimeout(()=>refreshPlanilhaInstantanea(true), 1600);
-      }
-    }, ms);
-    console.log("V10.43: polling instantâneo do worker/Firebase ativo a cada", ms, "ms");
+      const next=(window.__vescoFastPollUntil && Date.now()<window.__vescoFastPollUntil)?2200:normalMs;
+      v1038PlanilhaPollTimer=setTimeout(tick,next);
+    };
+    v1038PlanilhaPollTimer=setTimeout(tick,normalMs);
+    console.log("V10.51: polling adaptativo ativo — normal",normalMs,"ms; rápido 2200 ms após Atualizar.");
   }
 
   async function refreshFromEasyPanel(forceSync=false){
@@ -1344,7 +1544,7 @@ function coords(o){
           syncResult
         };
         saveLocalSnapshot(snap);
-        try{ render(); }catch(e){}
+        scheduleRender();
         return true;
       }
     }
@@ -1385,6 +1585,7 @@ function coords(o){
       const vals=[orderKey(o),number(o),ecom(o),o.id,o.id_tiny,o.numero,o.numero_ecommerce,o.pedido_key].map(txt).filter(Boolean);
       if(vals.some(v=>uniqueKeys.includes(firebaseSafeId(v)))) Object.assign(o,payload);
     });
+    invalidatePerfCaches();
     saveLocalSnapshot(snapshotFromState());
     return payload;
   }
@@ -1474,12 +1675,13 @@ function coords(o){
     state.loaded=true;
     state.loading=false;
     showLoading(false);
+    invalidatePerfCaches();
     updateBadges();
 
     const snap=snapshotFromState();
     await saveFirebaseSnapshot(snap);
 
-    try{ render(); }catch(e){}
+    scheduleRender();
     return true;
   }
 
@@ -1493,7 +1695,7 @@ function coords(o){
       state.lastFlexRawCount=apiFlex.length;
       const accepted=apiFlex.filter(o=>!o.is_delivered && o.is_flex && isFlexProjeto(o));
       state.lastFlexAcceptedCount=accepted.length;
-      if(accepted.length){ state.flex=dedup(accepted); saveStoredFlex(state.flex,state.month); if(showAlert) alert(`Flex atualizado pelo worker: ${accepted.length} pedido(s).`); return true; }
+      if(accepted.length){ state.flex=dedup(accepted); invalidatePerfCaches(); saveStoredFlex(state.flex,state.month); if(showAlert) alert(`Flex atualizado pelo worker: ${accepted.length} pedido(s).`); return true; }
       return false;
     }catch(e){ console.warn("V10.47: worker /flex-pedidos indisponível; tentando API Flex antiga.", e.message||e); return false; }
   }
@@ -1510,9 +1712,10 @@ function coords(o){
       state.lastFlexAcceptedCount=accepted.length;
       if(accepted.length){
         state.flex=dedup(accepted);
+        invalidatePerfCaches();
         saveStoredFlex(state.flex,state.month);
         saveLocalSnapshot(snapshotFromState());
-        try{ await saveFirebaseSnapshot(snapshotFromState()); }catch(e){}
+        saveFirebaseSnapshot(snapshotFromState()).catch(()=>null);
       }
       if(showAlert){
         alert(accepted.length?`Flex atualizado: ${accepted.length} pedido(s).`:`Flex consultado, mas nenhum pedido validado para ${monthLabel(state.month)}.`);
@@ -1528,94 +1731,64 @@ function coords(o){
 
 
 async function loadData(force=false){
-    if(state.loading) return;
+    if(state.loading) return false;
     state.loading=true;
-    showLoading(true);
+    const firstBoot=!state.loaded;
+    if(firstBoot) showLoading(true);
+    document.body.classList.toggle("v1050-refreshing",!!force);
 
-    // V10.43: EasyPanel/Firebase primeiro. Apps Script só emergência.
-    if(force){
-      try{
-        // Primeiro tenta sincronizar worker, depois relê a planilha já atualizada.
-        await refreshFromEasyPanel(true);
-        // O /sync do worker v2.1.4 roda em background; por isso relê a planilha imediatamente
-        // e o polling continua puxando quando o Apps Script terminar de gravar.
-        const snapPlanilhaForce=await loadPlanilhaBridgeSnapshot();
-        if(snapPlanilhaForce){
-          await applySnapshot(snapPlanilhaForce,"planilha_bridge_force");
-          v1038PlanilhaLastHash = v1038PlanilhaHash(extractArray(snapPlanilhaForce,["pedidos","orders","rows","data"]));
+    try{
+      if(force){
+        // Atualização não bloqueante: dispara o sync e já relê ERP/Flex em paralelo.
+        triggerEasyPanelSync().catch(()=>null);
+        const [snapPlanilha] = await Promise.all([
+          loadPlanilhaBridgeSnapshot().catch(()=>null),
+          refreshFlexFromAppsScriptOnly(false).catch(()=>null)
+        ]);
+        if(snapPlanilha){
+          await applySnapshot(snapPlanilha,"planilha_bridge_force");
+          v1038PlanilhaLastHash=v1038PlanilhaHash(extractArray(snapPlanilha,["pedidos","orders","rows","data"]));
         }else{
-          await refreshFromEasyPanel(false);
+          const snapEasy=await loadEasyPanelSnapshot().catch(()=>null);
+          if(snapEasy) await applySnapshot(snapEasy,"easypanel_force");
         }
-        setTimeout(()=>refreshPlanilhaInstantanea(true), 1800);
-        setTimeout(()=>refreshPlanilhaInstantanea(true), 4500);
-        // V10.49: ERP e Flex são fontes independentes.
-        // Atualizar sempre relê o Flex, mesmo quando o snapshot ERP carregou com sucesso.
-        await refreshFlexFromAppsScriptOnly(false);
-      }catch(e){
-        console.warn("V10.43: atualização pelo worker/planilha falhou.", e);
+        [1200,3200,7000].forEach(ms=>setTimeout(()=>refreshPlanilhaInstantanea(true),ms));
+        return true;
       }
-      state.loading=false;
-      showLoading(false);
-      try{ render(); }catch(e){}
-      return;
-    }
 
-    let quickLoaded=false;
+      let quickLoaded=false;
+      const snapPlanilha=await loadPlanilhaBridgeSnapshot().catch(()=>null);
+      if(snapPlanilha) quickLoaded=await applySnapshot(snapPlanilha,"planilha_bridge");
 
-    // V10.43: primeiro a planilha, porque ela é a fonte operacional que o usuário confere.
-    const snapPlanilha=await loadPlanilhaBridgeSnapshot();
-    if(snapPlanilha){
-      quickLoaded=await applySnapshot(snapPlanilha,"planilha_bridge");
+      if(!quickLoaded){
+        const snapEasy=await loadEasyPanelSnapshot().catch(()=>null);
+        if(snapEasy) quickLoaded=await applySnapshot(snapEasy,"easypanel");
+      }
+      if(!quickLoaded){
+        const snapFb=await loadFirebaseSnapshot().catch(()=>null);
+        if(snapFb) quickLoaded=await applySnapshot(snapFb,"firebase");
+        else{ const snapLocal=loadLocalSnapshot(); if(snapLocal) quickLoaded=await applySnapshot(snapLocal,"localStorage"); }
+      }
+
       if(quickLoaded){
-        try{ await saveFirebaseSnapshot(snapshotFromState()); }catch(e){}
+        // Não segura o boot esperando gravações de rede.
+        saveFirebaseSnapshot(snapshotFromState()).catch(()=>null);
+        setTimeout(async()=>{
+          try{ const ok=await refreshFlexFromAppsScriptOnly(false); if(ok) scheduleRender(); }
+          catch(e){ console.warn("V10.51: carga paralela do Flex falhou.",e.message||e); }
+        },80);
+        return true;
       }
-    }
 
-    if(!quickLoaded){
-      const snapEasy=await loadEasyPanelSnapshot();
-      if(snapEasy){
-        quickLoaded=await applySnapshot(snapEasy,"easypanel");
-      }
-    }
-
-    if(!quickLoaded){
-      const snapFb=await loadFirebaseSnapshot();
-      if(snapFb){
-        quickLoaded=await applySnapshot(snapFb,"firebase");
-      }else{
-        const snapLocal=loadLocalSnapshot();
-        if(snapLocal) quickLoaded=await applySnapshot(snapLocal,"localStorage");
-      }
-    }
-
-    if(quickLoaded){
+      state.orders=state.orders||[]; state.flex=state.flex||[]; state.rotas=mergeRotas(state.rotas||[]); state.loaded=true;
+      setTimeout(()=>refreshFromAppsScriptBackground(),100);
+      return false;
+    }finally{
       state.loading=false;
       showLoading(false);
+      document.body.classList.remove("v1050-refreshing");
       updateBadges();
-
-      // V10.49: o snapshot ERP não contém obrigatoriamente os pedidos Flex.
-      // A versão anterior retornava aqui e nunca chamava /flex-pedidos no boot.
-      setTimeout(async()=>{
-        try{
-          const ok=await refreshFlexFromAppsScriptOnly(false);
-          if(ok && (Array.isArray(ok) ? ok.length : true)) render();
-        }catch(e){
-          console.warn("V10.49: carga paralela do Flex falhou.", e.message||e);
-        }
-      },80);
-      return;
     }
-
-    // Emergência: só se não existir nenhum cache.
-    state.orders=state.orders||[];
-    state.flex=state.flex||[];
-    state.rotas=mergeRotas(state.rotas||[]);
-    state.loaded=true;
-    state.loading=false;
-    showLoading(false);
-    updateBadges();
-
-    setTimeout(()=>refreshFromAppsScriptBackground(),100);
   }
 
   function showLoading(show){ let el=document.getElementById("v8Loading"); if(!el){el=document.createElement("div"); el.id="v8Loading"; el.className="v8-loading"; el.innerHTML="<div>Carregando dados...</div>"; document.body.appendChild(el);} el.style.display=show?"grid":"none"; }
@@ -1940,43 +2113,48 @@ function layout(){
 
     document.getElementById("v8Date").addEventListener("change",async e=>{
       state.date=e.target.value||todayISO();
+      invalidatePerfCaches();
       await loadData(true);
-      render();
+      resetCurrentPage();
+      scheduleRender(true);
     });
     document.getElementById("v8Month").addEventListener("change",async e=>{
       state.month=e.target.value||state.date.slice(0,7);
       state.flexMonthView=state.month;
+      invalidatePerfCaches();
       await loadData(true);
-      render();
+      state.pageByTab={};
+      scheduleRender(true);
     });
     document.getElementById("v8Today").addEventListener("click",async()=>{
       state.date=todayISO();
+      invalidatePerfCaches();
       const d=document.getElementById("v8Date");
       if(d)d.value=state.date;
       await loadData(true);
-      render();
+      state.pageByTab={};
+      scheduleRender(true);
     });
     document.getElementById("v8Refresh").addEventListener("click",async()=>{
       window.__vescoFastPollUntil = Date.now() + 45000;
       await loadData(true);
-      render();
+      scheduleRender(true);
     });
     {
       let v1035SearchTimer=null;
       document.getElementById("v8Search").addEventListener("input",()=>{
         clearTimeout(v1035SearchTimer);
-        v1035SearchTimer=setTimeout(()=>render(),180);
+        resetCurrentPage();
+        v1035SearchTimer=setTimeout(()=>scheduleRender(),220);
       });
     }
 
     function bindNav(selector){
-      document.querySelectorAll(selector).forEach(btn=>btn.addEventListener("click",async()=>{
+      document.querySelectorAll(selector).forEach(btn=>btn.addEventListener("click",()=>{
         const tab=btn.dataset.tab;
         if(tab==="menu"){ openMobileMenu(); return; }
-        state.tab=tab;
         closeMobileMenu();
-        if(!state.loaded) await ensureData();
-        requestAnimationFrame(()=>render());
+        go(tab);
       }));
     }
     bindNav("#v8Sidebar [data-tab]");
@@ -2035,20 +2213,22 @@ function layout(){
   function tablePage({title,sub,kpi,list,columns,empty}){
     setPage(title,sub);
     const fullList = Array.isArray(list) ? list : [];
-    const visibleList = limitRows(fullList);
+    const page = paginationFor(fullList,state.tab,VESCO_PAGE_SIZE);
+    const visibleList = page.items;
     document.getElementById("v8Content").innerHTML=`
       ${kpis(kpi)}
-      ${limitedNotice(fullList.length, visibleList.length, title)}
       <div class="v8-card">
         <div class="v8-card-head">
-          <div><h3>${esc(title)}</h3><small>${fullList.length} registro(s) na data ${br(state.date)}${fullList.length>visibleList.length?` • exibindo ${visibleList.length}`:""}</small></div>
+          <div><h3>${esc(title)}</h3><small>${fullList.length} registro(s) na data ${br(state.date)}${fullList.length?` • exibindo ${page.start+1}-${page.end}`:""}</small></div>
         </div>
+        ${pagerHtml(page)}
         <div class="v8-table-wrap">
           <table class="v8-table">
             <thead><tr>${columns.map(c=>`<th>${esc(c.h)}</th>`).join("")}</tr></thead>
             <tbody>${visibleList.length?visibleList.map(o=>`<tr>${columns.map(c=>`<td>${c.render(o)}</td>`).join("")}</tr>`).join(""):`<tr><td colspan="${columns.length}" class="v8-empty"><b>${esc(empty||"Nenhum registro encontrado.")}</b></td></tr>`}</tbody>
           </table>
         </div>
+        ${pagerHtml(page)}
       </div>`;
   }
 
@@ -2062,14 +2242,15 @@ function layout(){
     const fatTotal=fatErp+fatFlex;
     const clientes=new Set(allM.map(client).filter(Boolean));
     const total=allM.length;
-    const sep=separacaoList().length;
-    const pronta=prontoList().length;
-    const log=logisticaList().length;
-    const flex=flexList().length;
-    const ret=retiradaList().length;
-    const pend=pendenciasProdutoList().length;
+    const dl=derivedLists();
+    const sep=dl.separacao.length;
+    const pronta=dl.pronto.length;
+    const log=dl.logistica.length;
+    const flex=dl.flex.length;
+    const ret=dl.retiradas.length;
+    const pend=dl.pendencias.length;
     const rotaStats=routeOrdersStats();
-    const ent=entreguesList().length;
+    const ent=dl.entregues.length;
 
     const daysInMonth=new Date(Number(state.month.slice(0,4)), Number(state.month.slice(5,7)), 0).getDate();
     const dayVals=Array.from({length:daysInMonth},(_,i)=>({day:i+1,value:0,count:0}));
@@ -2153,7 +2334,7 @@ function layout(){
 
         <div class="v8-card v9-quick-card">
           <div class="v8-card-head"><div><h3>Resumo rápido</h3><small>Ações de hoje</small></div></div>
-          <button onclick="VescoV8.go('separados')"><i class="fas fa-boxes-stacked"></i><span>Separados hoje</span><b>${separadosList().length}</b></button>
+          <button onclick="VescoV8.go('separados')"><i class="fas fa-boxes-stacked"></i><span>Separados hoje</span><b>${dl.separados.length}</b></button>
           <button onclick="VescoV8.go('saiu')"><i class="fas fa-route"></i><span>Pedidos prontos para rota</span><b>${pronta}</b></button>
           <button onclick="VescoV8.go('tarefas')"><i class="fas fa-clipboard-list"></i><span>Tarefas frota</span><b>${tarefasFrotaList().length}</b></button>
           <button onclick="VescoV8.go('flex')"><i class="fas fa-bolt"></i><span>Flex do mês</span><b>${flex}</b></button>
@@ -2173,7 +2354,7 @@ function layout(){
         <div class="v8-card">
           <div class="v8-card-head"><div><h3>Entregues hoje</h3><small>Somente data real de entrega</small></div></div>
           <div class="v8-table-wrap">
-            <table class="v8-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Entrega</th></tr></thead><tbody>${entreguesList().slice(0,8).map(o=>`<tr><td>#${esc(number(o)||orderKey(o))}</td><td>${esc(client(o))}</td><td>${br(deliveryDate(o))}</td></tr>`).join("")||`<tr><td colspan="3" class="v8-empty"><b>Nenhuma entrega hoje.</b></td></tr>`}</tbody></table>
+            <table class="v8-table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Entrega</th></tr></thead><tbody>${dl.entregues.slice(0,8).map(o=>`<tr><td>#${esc(number(o)||orderKey(o))}</td><td>${esc(client(o))}</td><td>${br(deliveryDate(o))}</td></tr>`).join("")||`<tr><td colspan="3" class="v8-empty"><b>Nenhuma entrega hoje.</b></td></tr>`}</tbody></table>
           </div>
         </div>
       </div>`;
@@ -2274,9 +2455,12 @@ function layout(){
   }
 
   function renderSeparacao(){
-    const allList=searchFilter(separacaoList());
-    const pendencias=searchFilter(pendenciasProdutoList());
+    const dl=derivedLists();
+    const allList=searchFilter(dl.separacao);
+    const pendencias=searchFilter(dl.pendencias);
     const list=dedup(allList.concat(pendencias));
+    const page=paginationFor(list,"separacao",VESCO_PAGE_SIZE);
+    const visibleList=page.items;
     setPage("Separação","Fila ativa de pedidos ERP ainda não separados.");
     const totalValue=list.reduce((s,o)=>s+value(o),0);
     document.getElementById("v8Content").innerHTML=`
@@ -2322,13 +2506,14 @@ function layout(){
 
       <div class="v8-card">
         <div class="v8-card-head">
-          <div><h3>Pedidos aguardando separação</h3><small>${list.length} registro(s)</small></div>
+          <div><h3>Pedidos aguardando separação</h3><small>${list.length} registro(s)${list.length?` • exibindo ${page.start+1}-${page.end}`:""}</small></div>
           <div class="v8-card-actions"><button class="v8-btn secondary" onclick="VescoV8.definirOperador()">Operador</button></div>
         </div>
+        ${pagerHtml(page)}
         <div class="v8-table-wrap">
           <table class="v8-table v92-separacao-table">
             <thead><tr><th>Pedido</th><th>Cliente / endereço / aviso</th><th>Data</th><th>Forma</th><th>Pagamento</th><th>Status</th><th>Ação</th></tr></thead>
-            <tbody>${list.length?list.map(o=>{
+            <tbody>${visibleList.length?visibleList.map(o=>{
               const idRaw=orderKey(o)||number(o);
               const id=esc(idRaw);
               const st=norm(status(o)||statusAll(o));
@@ -2353,6 +2538,7 @@ function layout(){
             }).join(""):`<tr><td colspan="7" class="v8-empty"><b>Nenhum pedido aguardando separação.</b></td></tr>`}</tbody>
           </table>
         </div>
+        ${pagerHtml(page)}
       </div>`;
   }
 
@@ -3392,6 +3578,8 @@ function renderDriverLiveMap(forceFit=false){
   function renderProntoEnvio(){
     const addedFlex=routeFlexExtras();
     const list=searchFilter(routeReadyList());
+    const page=paginationFor(list,"saiu",VESCO_PAGE_SIZE);
+    const visibleList=page.items;
     const erpCount=list.filter(o=>txt(o.__rotaSource)==="ERP").length;
     const flexCount=addedFlex.length;
     const sepSource=prontoList();
@@ -3433,14 +3621,15 @@ function renderDriverLiveMap(forceFit=false){
 
           ${addedFlex.length?`<div class="v8-added-flex"><b>Flex adicionados:</b> ${addedFlex.map(o=>`<span class="v8-route-tag">#${esc(number(o))} — ${esc(client(o))} <button onclick="VescoV8.removeFlexFromRoute('${esc(orderKey(o)||number(o)||ecom(o))}')">×</button></span>`).join("")}</div>`:""}
 
+          ${pagerHtml(page)}
           <div class="v8-table-wrap">
             <table class="v8-table">
               <thead><tr><th>Sel</th><th>Tipo</th><th>Pedido</th><th>Cliente / endereço</th><th>Data</th><th>Pagamento</th><th>Status</th><th>Mapa</th></tr></thead>
               <tbody>
-                ${list.length?list.map(o=>{
+                ${visibleList.length?visibleList.map(o=>{
                   const src=txt(o.__rotaSource)==="Flex"?"Flex":"ERP";
                   const id=orderKey(o)||number(o)||ecom(o);
-                  const checked=src==="Flex"?"checked":"";
+                  const checked=(src==="Flex" || state.routeSelection?.[firebaseSafeId(id)])?"checked":"";
                   return `<tr>
                     <td><input type="checkbox" class="v8-route-check" value="${esc(id)}" ${checked}></td>
                     <td><span class="v8-chip ${src==="Flex"?"orange":"blue"}">${src}</span></td>
@@ -3455,6 +3644,7 @@ function renderDriverLiveMap(forceFit=false){
               </tbody>
             </table>
           </div>
+          ${pagerHtml(page)}
 
           <div class="v8-card-head v9-routes-created"><div><h3>Rotas criadas</h3><small>${rotasCriadasDaData().length} rota(s) na data</small></div></div>
           <div class="v8-routes-list">${renderRotasCriadas()}</div>
@@ -3491,6 +3681,9 @@ function renderDriverLiveMap(forceFit=false){
         </div>
       </div>`;
     document.getElementById("v8SalvarRota")?.addEventListener("click",()=>salvarRotaSelecionada());
+    document.querySelectorAll(".v8-route-check").forEach(ch=>ch.addEventListener("change",()=>{
+      state.routeSelection[firebaseSafeId(ch.value)]=!!ch.checked;
+    }));
     document.getElementById("v8FlexRotaBusca")?.addEventListener("keydown",e=>{ if(e.key==="Enter") addFlexToRouteByCode(); });
     renderMap("logistica", true, list);
 
@@ -3510,7 +3703,9 @@ function renderDriverLiveMap(forceFit=false){
 
   
   async function salvarRotaSelecionada(){
-    const pedidos=Array.from(document.querySelectorAll(".v8-route-check:checked")).map(i=>i.value).filter(Boolean);
+    const domPedidos=Array.from(document.querySelectorAll(".v8-route-check:checked")).map(i=>i.value).filter(Boolean);
+    const memoryPedidos=routeReadyList().filter(o=>state.routeSelection?.[firebaseSafeId(orderKey(o)||number(o)||ecom(o))]).map(o=>orderKey(o)||number(o)||ecom(o));
+    const pedidos=[...new Set(domPedidos.concat(memoryPedidos).map(txt).filter(Boolean))];
     if(!pedidos.length){ alert("Selecione ao menos 1 pedido."); return; }
     const pedidosSet=new Set(pedidos.map(x=>String(x).replace(/^#/,"")));
     const selecionados=routeReadyList().filter(o=>{
@@ -3562,6 +3757,8 @@ function renderDriverLiveMap(forceFit=false){
 
       saveLocalRota(rotaLocal);
       state.rotas=mergeRotas([rotaLocal].concat(state.rotas||[]));
+      pedidos.forEach(id=>delete state.routeSelection[firebaseSafeId(id)]);
+      invalidatePerfCaches();
 
       const fb=await saveRouteFirebase(rotaLocal);
       if(fb.success){
@@ -3912,7 +4109,7 @@ function renderDriverLiveMap(forceFit=false){
     }
   }
 
-  function renderRetiradas(){ const list=searchFilter(retiradaList()); tablePage({title:"Retiradas / sem rota",sub:"Se não houver pedidos nesta regra, o contador fica zerado.",kpi:[{label:"Total",value:String(list.length),small:"retirada ou sem endereço"},{label:"Retirada",value:String(list.filter(o=>o.is_retirada).length),small:"forma retirada"},{label:"Sem endereço",value:String(list.filter(o=>!o.has_address).length),small:"precisa corrigir"},{label:"Valor",value:money(list.reduce((s,o)=>s+value(o),0)),small:"pedidos sem rota"}],list,empty:"Nenhum pedido para retirada ou sem rota.",columns:[{h:"Pedido",render:orderCell},{h:"Cliente",render:clientCell},{h:"Motivo",render:o=>`${o.is_retirada?'<span class="v8-chip green">Retirada</span>':''} ${!o.has_address?'<span class="v8-chip orange">Sem endereço</span>':''}`},{h:"Data",render:o=>`<span class="v8-chip gray">${br(dueDate(o))}</span>`},{h:"Status",render:o=>esc(status(o)||"Pendente")},{h:"Ação",render:o=>`<div class="v1021-action-stack"><button class="v8-btn green" onclick="VescoV8.marcarRetirada('${esc(orderKey(o)||number(o))}')">Registrar</button></div>`}]}); updateBadges(); }
+  function renderRetiradas(){ const list=searchFilter(derivedLists().retiradas); tablePage({title:"Retiradas / sem rota",sub:"Se não houver pedidos nesta regra, o contador fica zerado.",kpi:[{label:"Total",value:String(list.length),small:"retirada ou sem endereço"},{label:"Retirada",value:String(list.filter(o=>o.is_retirada).length),small:"forma retirada"},{label:"Sem endereço",value:String(list.filter(o=>!o.has_address).length),small:"precisa corrigir"},{label:"Valor",value:money(list.reduce((s,o)=>s+value(o),0)),small:"pedidos sem rota"}],list,empty:"Nenhum pedido para retirada ou sem rota.",columns:[{h:"Pedido",render:orderCell},{h:"Cliente",render:clientCell},{h:"Motivo",render:o=>`${o.is_retirada?'<span class="v8-chip green">Retirada</span>':''} ${!o.has_address?'<span class="v8-chip orange">Sem endereço</span>':''}`},{h:"Data",render:o=>`<span class="v8-chip gray">${br(dueDate(o))}</span>`},{h:"Status",render:o=>esc(status(o)||"Pendente")},{h:"Ação",render:o=>`<div class="v1021-action-stack"><button class="v8-btn green" onclick="VescoV8.marcarRetirada('${esc(orderKey(o)||number(o))}')">Registrar</button></div>`}]}); updateBadges(); }
   function renderEntregues(){
     if(!state.__loadingEntreguesDirect){
       state.__loadingEntreguesDirect=true;
@@ -3920,7 +4117,7 @@ function renderDriverLiveMap(forceFit=false){
         if(rows && rows.length) renderEntregues();
       }).catch(()=>{}).finally(()=>{state.__loadingEntreguesDirect=false;}),250);
     }
-    const list=searchFilter(entreguesList());
+    const list=searchFilter(derivedLists().entregues);
     tablePage({
       title:"Entregues / Retirados",
       sub:"Pedidos finalizados com data real na data selecionada.",
@@ -3946,8 +4143,9 @@ function renderDriverLiveMap(forceFit=false){
   }
 
   function renderLogistica(){
-    const list=searchFilter(logisticaList());
-    const tableList=limitRows(list);
+    const list=searchFilter(derivedLists().logistica);
+    const page=paginationFor(list,"logistica",VESCO_MAP_PAGE_SIZE);
+    const tableList=page.items;
     const plotted=list.filter(coords);
     setPage("Logística ERP","Apenas ERP não entregue, com endereço e fora de retirada/Flex.");
     document.getElementById("v8Content").innerHTML=`
@@ -3963,11 +4161,11 @@ function renderDriverLiveMap(forceFit=false){
       ])}
       <div class="v8-grid">
         <div class="v8-card">
-          <div class="v8-card-head"><div><h3>Pedidos ERP para entrega</h3><small>${list.length} pedido(s)${list.length>tableList.length?` • exibindo ${tableList.length}`:""}</small></div></div>${limitedNotice(list.length, tableList.length, "pedidos ERP")}
-          <div class="v8-table-wrap"><table class="v8-table"><thead><tr><th>Pedido</th><th>Cliente / endereço</th><th>Data</th><th>Status</th><th>Valor</th><th>Ação</th></tr></thead><tbody>${tableList.length?tableList.map(o=>{const id=esc(orderKey(o)||number(o)); return `<tr><td>${orderCell(o)} ${dueDate(o)&&dueDate(o)<state.date?'<span class="v8-chip red">Atrasado</span>':'<span class="v8-chip green">Do dia</span>'}</td><td>${clientCell(o)}</td><td><span class="v8-chip gray">${br(dueDate(o))}</span></td><td>${esc(status(o)||"Pendente")}</td><td>${money(value(o))}</td><td><div class="v1021-action-stack"><button class="v8-btn secondary" onclick="VescoV8.abrirPedidoNoMapa('${id}','logistica')">Mapa</button><button class="v8-btn orange" onclick="VescoV8.marcarComoRetirada('${id}')">É retirada</button><button class="v8-btn green" onclick="VescoV8.updateStatus('${id}','Entregue')">Entregue</button></div></td></tr>`;}).join(""):`<tr><td colspan="6" class="v8-empty"><b>Nenhum ERP pendente para entrega.</b></td></tr>`}</tbody></table></div>
+          <div class="v8-card-head"><div><h3>Pedidos ERP para entrega</h3><small>${list.length} pedido(s)${list.length?` • exibindo ${page.start+1}-${page.end}`:""}</small></div></div>${pagerHtml(page)}
+          <div class="v8-table-wrap"><table class="v8-table"><thead><tr><th>Pedido</th><th>Cliente / endereço</th><th>Data</th><th>Status</th><th>Valor</th><th>Ação</th></tr></thead><tbody>${tableList.length?tableList.map(o=>{const id=esc(orderKey(o)||number(o)); return `<tr><td>${orderCell(o)} ${dueDate(o)&&dueDate(o)<state.date?'<span class="v8-chip red">Atrasado</span>':'<span class="v8-chip green">Do dia</span>'}</td><td>${clientCell(o)}</td><td><span class="v8-chip gray">${br(dueDate(o))}</span></td><td>${esc(status(o)||"Pendente")}</td><td>${money(value(o))}</td><td><div class="v1021-action-stack"><button class="v8-btn secondary" onclick="VescoV8.abrirPedidoNoMapa('${id}','logistica')">Mapa</button><button class="v8-btn orange" onclick="VescoV8.marcarComoRetirada('${id}')">É retirada</button><button class="v8-btn green" onclick="VescoV8.updateStatus('${id}','Entregue')">Entregue</button></div></td></tr>`;}).join(""):`<tr><td colspan="6" class="v8-empty"><b>Nenhum ERP pendente para entrega.</b></td></tr>`}</tbody></table></div>${pagerHtml(page)}
         </div>
         <div class="v8-card v8-map-card">
-          <div class="v8-map-toolbar"><div><h3>Mapa ERP</h3><small>Somente pedidos da lista</small></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="v8-btn secondary" onclick="VescoV8.gerarPingsMapa('logistica')">Gerar pings</button><button class="v8-btn secondary" onclick="VescoV8.renderMap('logistica', true)">Ajustar</button></div></div>
+          <div class="v8-map-toolbar"><div><h3>Mapa ERP</h3><small>Somente pedidos da lista</small></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="v8-btn secondary" onclick="VescoV8.gerarPingsMapa('logistica')">Localizar endereços</button><button class="v8-btn secondary" onclick="VescoV8.renderMap('logistica', true)">Ajustar</button></div></div>
           <div id="v8-map-logistica" class="v8-map"></div><div id="v8-map-logistica-stats" class="v8-map-stats"></div>
         </div>
       </div>`;
@@ -4030,8 +4228,9 @@ function renderDriverLiveMap(forceFit=false){
   }
 
   function renderFlex(){
-    const list=searchFilter(flexList());
-    const tableList=limitRows(list);
+    const list=searchFilter(derivedLists().flex);
+    const page=paginationFor(list,"flex",VESCO_MAP_PAGE_SIZE);
+    const tableList=page.items;
     const plotted=list.filter(coords);
     const month=state.month || state.date.slice(0,7);
     const storedCount=readStoredFlex(month).length;
@@ -4046,7 +4245,7 @@ function renderDriverLiveMap(forceFit=false){
         {label:"Armazenados",value:String(storedCount),small:"local deste mês"}
       ])+
       `<div class="v8-flex-layout">${renderFlexMonthBars()}${renderFlexContas(list)}</div>`+
-      `<div class="v8-grid"><div class="v8-card"><div class="v8-card-head"><div><h3>Pedidos Flex</h3><small>${list.length} pedido(s)${list.length>tableList.length?` • exibindo ${tableList.length}`:""}</small></div><div class="v8-card-actions"><button class="v8-btn secondary" onclick="VescoV8.openFlexMonth('${esc(month)}')">Recarregar mês</button></div></div><div class="v8-table-wrap"><table class="v8-table"><thead><tr><th>Pedido/E-com</th><th>Destinatário</th><th>Produtos</th><th>Data</th><th>Valor</th><th>Conta</th><th>Status</th><th>Ação</th></tr></thead><tbody>${tableList.length?tableList.map(o=>`<tr><td>${orderCell(o)}</td><td>${clientCell(o)}</td><td>${produtoHtml(o)}</td><td><span class="v8-chip gray">${br(dueDate(o))}</span></td><td>${money(value(o))}</td><td><span class="v8-chip blue">${esc(pick(o,["conta","loja","store_name"])||"Flex")}</span></td><td><span class="v8-chip orange">Flex pendente</span></td><td><button class="v8-btn orange" onclick="VescoV8.openMapForOrder('flex','${esc(number(o)||orderKey(o)||ecom(o))}')">${coords(o)?"Mapa":"Maps"}</button></td></tr>`).join(""):`<tr><td colspan="8" class="v8-empty"><b>Nenhum Flex neste mês.</b></td></tr>`}</tbody></table></div>${limitedNotice(list.length, tableList.length, "Flex")}</div><div class="v8-card v8-map-card"><div class="v8-map-toolbar"><div><h3>Radar Flex</h3><small>Somente pedidos da lista</small></div><button class="v8-btn secondary" onclick="VescoV8.renderMap('flex', true)">Ajustar</button></div><div id="v8-map-flex" class="v8-map"></div><div id="v8-map-flex-stats" class="v8-map-stats"></div></div></div>`;
+      `<div class="v8-grid"><div class="v8-card"><div class="v8-card-head"><div><h3>Pedidos Flex</h3><small>${list.length} pedido(s)${list.length?` • exibindo ${page.start+1}-${page.end}`:""}</small></div><div class="v8-card-actions"><button class="v8-btn secondary" onclick="VescoV8.openFlexMonth('${esc(month)}')">Recarregar mês</button></div></div>${pagerHtml(page)}<div class="v8-table-wrap"><table class="v8-table"><thead><tr><th>Pedido/E-com</th><th>Destinatário</th><th>Produtos</th><th>Data</th><th>Valor</th><th>Conta</th><th>Status</th><th>Ação</th></tr></thead><tbody>${tableList.length?tableList.map(o=>`<tr><td>${orderCell(o)}</td><td>${clientCell(o)}</td><td>${produtoHtml(o)}</td><td><span class="v8-chip gray">${br(dueDate(o))}</span></td><td>${money(value(o))}</td><td><span class="v8-chip blue">${esc(pick(o,["conta","loja","store_name"])||"Flex")}</span></td><td><span class="v8-chip orange">Flex pendente</span></td><td><button class="v8-btn orange" onclick="VescoV8.openMapForOrder('flex','${esc(number(o)||orderKey(o)||ecom(o))}')">${coords(o)?"Mapa":"Maps"}</button></td></tr>`).join(""):`<tr><td colspan="8" class="v8-empty"><b>Nenhum Flex neste mês.</b></td></tr>`}</tbody></table></div>${pagerHtml(page)}</div><div class="v8-card v8-map-card"><div class="v8-map-toolbar"><div><h3>Radar Flex</h3><small>Localização progressiva com cache</small></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="v8-btn secondary" onclick="VescoV8.gerarPingsMapa('flex')">Localizar endereços</button><button class="v8-btn secondary" onclick="VescoV8.renderMap('flex', true)">Ajustar</button></div></div><div id="v8-map-flex" class="v8-map"></div><div id="v8-map-flex-stats" class="v8-map-stats"></div></div></div>`;
     renderMap("flex",true);
   }
   function showLegacy(tab){
@@ -4184,45 +4383,66 @@ function renderDriverLiveMap(forceFit=false){
     return false;
   }
 
+  async function viaCepLookup(cep){
+    cep=String(cep||"").replace(/\D/g,"");
+    if(cep.length!==8) return null;
+    const cached=state.cepCache?.[cep];
+    if(cached && Date.now()-Number(cached.ts||0)<2592000000) return cached.erro?null:cached;
+    const ctrl=new AbortController(); const timer=setTimeout(()=>ctrl.abort(),5000);
+    try{
+      const res=await fetch(`https://viacep.com.br/ws/${cep}/json/`,{signal:ctrl.signal,cache:"force-cache"});
+      if(!res.ok) return null;
+      const data=await res.json();
+      state.cepCache[cep]={...data,ts:Date.now()};
+      saveLocalJson("vesco:v1050:cepCache",state.cepCache);
+      return data && !data.erro ? data : null;
+    }catch(e){ return null; }finally{ clearTimeout(timer); }
+  }
+  function houseNumberFromAddress(a){
+    const parts=cleanDisplayAddress(a).split(",").map(x=>x.trim());
+    for(let i=1;i<Math.min(parts.length,4);i++){ const m=parts[i].match(/^\d+[A-Za-z\-\/]{0,5}/); if(m) return m[0]; }
+    const m=cleanDisplayAddress(a).match(/\b(?:n[ºo.]?\s*)?(\d+[A-Za-z\-\/]{0,5})\b/i);
+    return m?m[1]:"";
+  }
   async function geocodeAddressViaFlexApi(endereco){
-    const a=txt(endereco);
+    const a=cleanDisplayAddress(endereco);
     if(!a || a==="—" || a==="-") return null;
-    const candidates=geocodeCandidates(a);
-    const cacheKey="v1023:"+candidates.join("||");
-    const cached=state.geoCache[cacheKey];
-    if(cached && cached.status==="OK" && coordCompatibleWithAddress(a,parseFloat(cached.lat),parseFloat(cached.lon ?? cached.lng))) return cached;
+    const local=cachedGeoForAddress(a);
+    if(local && coordCompatibleWithAddress(a,parseFloat(local.lat),parseFloat(local.lon??local.lng))) return local;
 
-    // 1) tenta Apps Script/Flex com endereço limpo e priorizando São Paulo.
+    let candidates=geocodeCandidates(a);
+    const cep=extractCep(a);
+    if(cep){
+      const via=await viaCepLookup(cep);
+      if(via){
+        const number=houseNumberFromAddress(a);
+        const byCep=[via.logradouro,number,via.bairro,via.localidade,via.uf,cep,"Brasil"].filter(Boolean).join(", ");
+        candidates=[byCep,...candidates.filter(x=>addressKey(x)!==addressKey(byCep))];
+      }
+    }
+    const cacheKey="v1050:"+candidates.join("||");
+    const cached=state.geoCache[cacheKey];
+    if(cached && cached.status==="OK" && coordCompatibleWithAddress(a,parseFloat(cached.lat),parseFloat(cached.lon??cached.lng))) return cached;
+
     for(const q of candidates){
       try{
-        const res=await jsonp(API_FLEX,{action:"geocodeEndereco",endereco:q,address:q,original:a,forcar_sp:looksLikeSPAddress(a)?1:0},45000);
-        const ok=(res && (res.status==="OK" || res?.resultado?.status==="OK"));
-        const out=ok ? (res.status==="OK"?res:res.resultado) : res;
+        const res=await jsonp(API_FLEX,{action:"geocodeEndereco",endereco:q,address:q,original:a,forcar_sp:explicitSaoPauloCity(a)?1:0},12000);
+        const out=(res && res.status==="OK")?res:(res?.resultado?.status==="OK"?res.resultado:res);
         const lat=parseFloat(String(out?.lat).replace(",","."));
-        const lon=parseFloat(String(out?.lon ?? out?.lng).replace(",","."));
+        const lon=parseFloat(String(out?.lon??out?.lng).replace(",","."));
         if(out && out.status==="OK" && coordCompatibleWithAddress(a,lat,lon)){
-          out.source=out.source||"apps_script";
-          out.query=q;
-          state.geoCache[cacheKey]=out;
-          return out;
+          const good={...out,lat,lon,lng:lon,source:out.source||out.provider||"apps_script",query:q,status:"OK"};
+          state.geoCache[cacheKey]=good; rememberGeoForAddress(a,good); return good;
         }
       }catch(e){}
-      await sleep(120);
     }
 
-    // 2) fallback direto no navegador via Nominatim, rejeitando resultado fora da Grande SP.
-    for(const q of candidates){
+    for(const q of candidates.slice(0,2)){
       try{
         const out=await geocodeNominatim(q,a);
-        if(out && out.status==="OK"){
-          state.geoCache[cacheKey]=out;
-          return out;
-        }
+        if(out && out.status==="OK"){ state.geoCache[cacheKey]=out; rememberGeoForAddress(a,out); return out; }
       }catch(e){}
-      await sleep(900);
     }
-
-    // Não guarda falha definitiva: o endereço pode ser corrigido ou a API pode estar temporariamente indisponível.
     return {status:"ZERO_RESULTS",query:candidates[0]||a,ts:Date.now()};
   }
   function applyGeoToOrder(o, ge){
@@ -4235,8 +4455,9 @@ function renderDriverLiveMap(forceFit=false){
     o.lon=lon;
     o.latitude=lat;
     o.longitude=lon;
-    o.geocode_status="OK_AUTO_MAP_V1023";
+    o.geocode_status="OK_AUTO_MAP_V1051";
     o.geocode_source=ge.source||"auto";
+    rememberGeoForAddress(address(o),{...ge,lat,lon,status:"OK"});
     return true;
   }
   async function persistGeoPatch(o){
@@ -4244,7 +4465,7 @@ function renderDriverLiveMap(forceFit=false){
     if(!id) return false;
     const patch={
       lat:o.lat,lon:o.lon,latitude:o.lat,longitude:o.lon,
-      geocode_status:o.geocode_status||"OK_AUTO_MAP_V1048",
+      geocode_status:o.geocode_status||"OK_AUTO_MAP_V1051",
       geocode_source:o.geocode_source||"auto",
       geocode_at:new Date().toISOString()
     };
@@ -4252,7 +4473,7 @@ function renderDriverLiveMap(forceFit=false){
       await firebasePatch("vesco_operacao/orders/"+firebaseSafeId(id),patch,6500);
       return true;
     }catch(e){
-      console.warn("V10.48: não persistiu coordenada no Firebase",id,e.message||e);
+      console.warn("V10.51: não persistiu coordenada no Firebase",id,e.message||e);
       return false;
     }
   }
@@ -4268,39 +4489,61 @@ function renderDriverLiveMap(forceFit=false){
   async function autoGeocodeMap(type,list,force=false){
     const key=`${type}:${state.tab}:${state.date}:${state.month}`;
     if(state.geoAutoRunning[key]) return false;
-    const missing=(list||[]).filter(o=>!coords(o)&&hasAddress(o)).slice(0,25);
-    if(!missing.length) return false;
+    const candidates=(list||[]).filter(o=>hasAddress(o) && (force || !coords(o)));
+    if(!candidates.length) return false;
+
+    const groups=new Map();
+    for(const o of candidates){
+      const k=addressKey(address(o));
+      if(!k) continue;
+      if(!groups.has(k)) groups.set(k,[]);
+      groups.get(k).push(o);
+    }
+    const jobs=[...groups.values()].slice(0,VESCO_GEO_BATCH_LIMIT);
+    if(!jobs.length) return false;
     state.geoAutoRunning[key]=true;
-    let updated=0, fail=0;
+    let updated=0,fail=0,done=0;
+    const stats=document.getElementById(`v8-map-${type}-stats`);
+    const setProgress=()=>{
+      const el=document.getElementById(`v8-map-${type}-geo-progress`);
+      if(el) el.textContent=`Localizando ${done}/${jobs.length} endereço(s)`;
+    };
+    if(stats) stats.insertAdjacentHTML("beforeend",`<span id="v8-map-${type}-geo-progress" class="warn">Localizando 0/${jobs.length} endereço(s)</span>`);
+
+    async function runGroup(group){
+      const ge=await geocodeAddressViaFlexApi(address(group[0]));
+      if(ge && ge.status==="OK"){
+        for(const o of group){ if(applyGeoToOrder(o,ge)){ updated++; persistGeoPatch(o).catch(()=>null); } }
+      }else fail+=group.length;
+      done++; setProgress();
+      if(done===jobs.length || done%VESCO_GEO_CONCURRENCY===0){
+        renderMap(type,false,list);
+        await sleep(0);
+      }
+    }
+
     try{
-      for(const o of missing){
-        try{
-          const ge=await geocodeAddressViaFlexApi(address(o));
-          if(applyGeoToOrder(o,ge)){
-            updated++;
-            await persistGeoPatch(o);
-          }else fail++;
-        }catch(e){ fail++; }
-        await sleep(180);
+      for(let i=0;i<jobs.length;i+=VESCO_GEO_CONCURRENCY){
+        await Promise.allSettled(jobs.slice(i,i+VESCO_GEO_CONCURRENCY).map(runGroup));
       }
       if(updated){
         saveLocalSnapshot(snapshotFromState());
-        const stats=document.getElementById(`v8-map-${type}-stats`);
-        if(stats) stats.innerHTML+=`<span class="ok">${updated} ping(s) gerado(s) e salvo(s)</span>`;
-        setTimeout(()=>renderMap(type,true,list),250);
-      }else if(fail){
-        const stats=document.getElementById(`v8-map-${type}-stats`);
-        if(stats) stats.innerHTML+=`<span class="warn">geocode automático sem resultado neste lote</span>`;
+        if(stats) stats.insertAdjacentHTML("beforeend",`<span class="ok">${updated} pedido(s) localizado(s) e salvo(s)</span>`);
+      }else if(fail && stats){
+        stats.insertAdjacentHTML("beforeend",`<span class="warn">${fail} sem resultado; revise rua, número ou CEP</span>`);
       }
+      renderMap(type,false,list);
       return updated>0;
     }finally{
       state.geoAutoRunning[key]=false;
+      document.getElementById(`v8-map-${type}-geo-progress`)?.remove();
     }
   }
 
 
   function renderSeparados(){
-    const list=searchFilter(separadosList());
+    const list=searchFilter(derivedLists().separados);
+    const page=paginationFor(list,"separados",VESCO_PAGE_SIZE);
     const iniciados=list.filter(o=>txt(sepStartTime(o))).length;
     const finalizados=list.filter(o=>txt(sepEndTime(o)) || txt(sepDate(o))).length;
     const comTempo=list.filter(o=>sepTempo(o)!=="—").length;
@@ -4308,7 +4551,7 @@ function renderDriverLiveMap(forceFit=false){
 
     setPage("Separados Hoje","Somente pedidos com separação finalizada na data real selecionada.");
 
-    const rows=list.map(o=>{
+    const rows=page.items.map(o=>{
       const id=esc(orderKey(o)||number(o));
       const st=esc(status(o)||"Separado");
       return `<tr>
@@ -4350,6 +4593,7 @@ function renderDriverLiveMap(forceFit=false){
           <button class="v8-btn secondary" onclick="VescoV8.gotoTab('saiu')">Ver prontos para envio</button>
         </div>
 
+        ${pagerHtml(page)}
         <div class="v8-table-wrap v1027-separados-table">
           <table class="v8-table">
             <thead>
@@ -4370,43 +4614,70 @@ function renderDriverLiveMap(forceFit=false){
             </tbody>
           </table>
         </div>
+        ${pagerHtml(page)}
       </div>`;
   }
 
-function render(){
+  let v1050RenderScheduled=false;
+  function scheduleRender(force=false){
+    if(v1050RenderScheduled && !force) return;
+    v1050RenderScheduled=true;
+    const token=++state.renderToken;
+    const run=()=>{
+      const wait=Math.max(0,Number(state.userNavigatingUntil||0)-Date.now());
+      if(wait>0 && !force){ setTimeout(run,wait+20); return; }
+      requestAnimationFrame(()=>{
+        if(token!==state.renderToken && !force){ v1050RenderScheduled=false; return; }
+        v1050RenderScheduled=false;
+        const scroller=document.querySelector("#v8Main") || document.scrollingElement;
+        const top=scroller?scroller.scrollTop:0;
+        try{ render(); }finally{
+          if(scroller && top>0 && !force) requestAnimationFrame(()=>{ try{scroller.scrollTop=top;}catch(e){} });
+        }
+      });
+    };
+    setTimeout(run,0);
+  }
+
+  function render(){
+    const tab=state.tab||"dashboard";
     try{
-      closeMaps();
+      const mapTabs=new Set(["logistica","flex","saiu"]);
+      if(Object.keys(state.maps||{}).length && (state.lastRenderedTab!==tab || mapTabs.has(tab))) closeMaps();
       updateBadges();
-      if(state.tab==="dashboard") return renderDashboard();
-      if(state.tab==="separacao") return renderSeparacao();
-      if(state.tab==="separados") return renderSeparados();
-      if(state.tab==="logistica") return renderLogistica();
-      if(state.tab==="flex") return renderFlex();
-      if(state.tab==="retiradas") return renderRetiradas();
-      if(state.tab==="tarefas") return renderTarefasFrota();
-      if(state.tab==="entregues") return renderEntregues();
-      if(state.tab==="saiu") return renderProntoEnvio();
-      return renderDashboard();
+      if(tab==="dashboard") renderDashboard();
+      else if(tab==="separacao") renderSeparacao();
+      else if(tab==="separados") renderSeparados();
+      else if(tab==="logistica") renderLogistica();
+      else if(tab==="flex") renderFlex();
+      else if(tab==="retiradas") renderRetiradas();
+      else if(tab==="tarefas") renderTarefasFrota();
+      else if(tab==="entregues") renderEntregues();
+      else if(tab==="saiu") renderProntoEnvio();
+      else renderDashboard();
+      state.lastRenderedTab=tab;
+      markNavigationBusy(false);
+      const c=document.getElementById("v8Content");
+      if(c){
+        c.classList.remove("v1051-page-ready");
+        requestAnimationFrame(()=>c.classList.add("v1051-page-ready"));
+      }
     }catch(e){
-      console.error("V10.43: render seguro capturou erro.", e);
+      console.error("V10.52: render seguro capturou erro.", e);
+      markNavigationBusy(false);
       showLoading(false);
       const el=document.getElementById("v8Content");
       if(el) el.innerHTML=`<div class="v8-card"><h3>Erro de tela contornado</h3><p>O painel não travou. Clique em Atualizar ou mude de aba.</p><small>${esc(e.message||e)}</small></div>`;
     }
   }
 
-  function updateBadges(){
+  function updateBadges(force=false){
     function setTabBadge(tab,count){
       document.querySelectorAll(`[data-tab="${tab}"]`).forEach(btn=>{
         if(tab==="menu") return;
         let b=btn.querySelector(".v8-badge");
-        if(!b){
-          b=document.createElement("b");
-          b.className="v8-badge v110-menu-ping";
-          btn.appendChild(b);
-        }else{
-          b.classList.add("v110-menu-ping");
-        }
+        if(!b){ b=document.createElement("b"); b.className="v8-badge v110-menu-ping"; btn.appendChild(b); }
+        else b.classList.add("v110-menu-ping");
         b.textContent=String(count);
         b.setAttribute("aria-label", `${count} pendente(s)`);
         b.title=`${count} pendente(s)`;
@@ -4415,35 +4686,47 @@ function render(){
         btn.classList.toggle("has-v110-ping", count>0);
       });
     }
-
-    const qSeparar=separacaoList().length + pendenciasProdutoList().length;
-    const qPronto=prontoList().length + routeFlexExtras().length;
-    const qEntregar=logisticaList().length;
-    const qRetirar=retiradaList().length;
-    const qTarefas=tarefasFrotaList().filter(t=>t.status!=="Concluída").length;
-    const qFlex=flexList().length;
-    const qSeparados=separadosList().length;
-    const qEntregues=entreguesList().length;
-
-    // Pings principais pedidos pelo usuário:
-    // Separação = pedidos a separar.
-    // Logística ERP = pedidos a serem entregues.
-    setTabBadge("separacao", qSeparar);
-    setTabBadge("logistica", qEntregar);
-    setTabBadge("retiradas", qRetirar);
-
-    // Demais filas também recebem contador para operação.
-    setTabBadge("saiu", qPronto);
-    setTabBadge("tarefas", qTarefas);
-    setTabBadge("flex", qFlex);
-    setTabBadge("separados", qSeparados);
-    setTabBadge("entregues", qEntregues);
-
-    const b=document.getElementById("v8RetBadge"); if(b) b.textContent=String(qRetirar);
+    let counts=null;
+    if(!force && state.badgeCache && state.badgeCacheRevision===state.perfRevision){
+      counts=state.badgeCache;
+    }else{
+      const dl=derivedLists();
+      counts={
+        separacao:dl.separacao.length + dl.pendencias.length,
+        saiu:dl.pronto.length + routeFlexExtras().length,
+        logistica:dl.logistica.length,
+        retiradas:dl.retiradas.length,
+        tarefas:dl.tarefas.filter(t=>t.status!=="Concluída").length,
+        flex:dl.flex.length,
+        separados:dl.separados.length,
+        entregues:dl.entregues.length
+      };
+      state.badgeCache=counts;
+      state.badgeCacheRevision=state.perfRevision;
+    }
+    Object.entries(counts).forEach(([tab,count])=>setTabBadge(tab,count));
+    const b=document.getElementById("v8RetBadge"); if(b) b.textContent=String(counts.retiradas||0);
   }
-  function closeMaps(){ Object.keys(state.maps).forEach(k=>{ try{state.maps[k].remove()}catch(e){} }); state.maps={}; state.layers={}; state.markers={logistica:{},flex:{}}; }
+
+  function closeMaps(){
+    Object.keys(state.maps).forEach(k=>{
+      try{ const m=state.maps[k]; const c=m.getCenter(); state.mapViews[k]={lat:c.lat,lon:c.lng,zoom:m.getZoom()}; m.remove(); }catch(e){}
+    });
+    state.maps={}; state.layers={}; state.markers={logistica:{},flex:{}};
+  }
   function mapIcon(type,label){ return L.divIcon({className:"",html:`<div class="v8-marker ${type==="flex"?"flex":""}">${label}</div>`,iconSize:[31,31],iconAnchor:[15,15]}); }
-  function ensureMap(type){ if(typeof L==="undefined")return null; const el=document.getElementById(`v8-map-${type}`); if(!el)return null; if(state.maps[type])return state.maps[type]; const map=L.map(el,{preferCanvas:true,zoomControl:true}).setView([-23.5505,-46.6333],11); L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(map); state.maps[type]=map; state.layers[type]=L.layerGroup().addTo(map); setTimeout(()=>map.invalidateSize(true),120); return map; }
+  function ensureMap(type){
+    if(typeof L==="undefined")return null;
+    const el=document.getElementById(`v8-map-${type}`); if(!el)return null; if(state.maps[type])return state.maps[type];
+    const view=state.mapViews[type]||{lat:-23.5505,lon:-46.6333,zoom:11};
+    const map=L.map(el,{preferCanvas:true,zoomControl:true,fadeAnimation:false,markerZoomAnimation:false,zoomAnimation:true}).setView([view.lat,view.lon],view.zoom);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap",updateWhenIdle:true,updateWhenZooming:false,keepBuffer:4,crossOrigin:true}).addTo(map);
+    map.on("moveend zoomend",()=>{ try{const c=map.getCenter();state.mapViews[type]={lat:c.lat,lon:c.lng,zoom:map.getZoom()};}catch(e){} });
+    state.maps[type]=map; state.layers[type]=L.layerGroup().addTo(map);
+    requestAnimationFrame(()=>{try{map.invalidateSize(false);}catch(e){}});
+    setTimeout(()=>{try{map.invalidateSize(false);}catch(e){}},220);
+    return map;
+  }
   function listForMap(type){ return type==="flex"?searchFilter(flexList()):searchFilter(logisticaList()); }
   
   function routeOriginLatLon(){
@@ -4541,9 +4824,13 @@ function renderMap(type,forceFit=false,listOverride=null){
       const missingAddress=listFull.filter(o=>!coords(o)&&hasAddress(o)).length;
       const rejected=listFull.filter(o=>txt(o.geocode_status).includes("FORA_DE_SP")).length;
       const limited = plottedFull.length > plotted.length;
-      stats.innerHTML=`<span class="ok">${plotted.length}/${listFull.length} no mapa interno</span><span class="warn">${listFull.length-plotted.length} fora do mapa rápido</span>${limited?`<span class="warn">mapa limitado a ${plotted.length} pins para não travar</span>`:""}<span>${missingAddress} aguardando localização</span>${rejected?`<span class="warn">${rejected} coordenada fora de SP</span>`:""}${missingAddress?`<button class="v8-mini-btn" onclick="VescoV8.openGoogleMapsForList('${type}')">Abrir no Google Maps por endereço</button>`:""}`;
+      const noCoord=listFull.length-plottedFull.length;
+      stats.innerHTML=`<span class="ok">${plotted.length}/${listFull.length} no mapa</span>${noCoord?`<span class="warn">${noCoord} aguardando localização automática</span>`:""}${limited?`<span class="warn">exibindo ${plotted.length} pins no modo rápido</span>`:""}${rejected?`<span class="warn">${rejected} coordenada incompatível descartada</span>`:""}${missingAddress?`<button class="v8-mini-btn" onclick="VescoV8.gerarPingsMapa('${type}')">Localizar agora</button>`:""}`;
     }
-    setTimeout(()=>{try{map.invalidateSize(true); if(pts.length&&forceFit){ if(pts.length===1) map.setView(pts[0],15); else map.fitBounds(L.latLngBounds(pts).pad(.16),{maxZoom:14}); }}catch(e){}},80);
+    const fitKey=`${type}|${plotted.map(o=>number(o)||orderKey(o)||ecom(o)).join(",")}`;
+    const shouldFit=!!forceFit && state.mapFitKeys[type]!==fitKey;
+    if(shouldFit) state.mapFitKeys[type]=fitKey;
+    requestAnimationFrame(()=>{try{map.invalidateSize(false); if(pts.length&&shouldFit){ if(pts.length===1) map.setView(pts[0],15,{animate:false}); else map.fitBounds(L.latLngBounds(pts).pad(.16),{maxZoom:14,animate:false}); }}catch(e){}});
 
     // V10.35: não calcula rota OSRM automaticamente e não roda geocode em cada troca de módulo.
     if(type==="logistica" && plotted.length && VESCO_ROUTE_LINE){
@@ -4610,15 +4897,24 @@ function renderMap(type,forceFit=false,listOverride=null){
     }
   }
   async function ensureData(){ if(!state.loaded) await loadData(true); }
-  async function go(tab){
-    state.tab=tab;
-    if(!state.loaded) await ensureData();
-    if(v1035RenderLock) return;
-    v1035RenderLock=true;
-    requestAnimationFrame(()=>{ try{ render(); } finally { v1035RenderLock=false; } });
+  function go(tab){
+    const next=txt(tab)||"dashboard";
+    if(next===state.tab && state.lastRenderedTab===next) return true;
+    state.tab=next;
+    state.userNavigatingUntil=Date.now()+180;
+    const meta=tabMeta(next);
+    setPage(meta[0],meta[1]);
+    markNavigationBusy(true);
+    if(!state.loaded){
+      ensureData().then(()=>scheduleRender(true)).catch(()=>scheduleRender(true));
+      return true;
+    }
+    scheduleRender(true);
+    return true;
   }
   function interceptOldClicks(){ document.addEventListener("click",e=>{ const btn=e.target.closest?.("[data-v7tab], [data-v8tab], #v7Sidebar button, .tab-nav button"); if(!btn)return; const label=norm(btn.dataset.v7tab||btn.dataset.v8tab||btn.textContent||""); const map={"dashboard":"dashboard","separacao":"separacao","separados hoje":"separados","separados":"separados","logistica":"logistica","logistica erp":"logistica","logística":"logistica","pronto para envio":"saiu","retiradas":"retiradas","tarefas frota":"tarefas","tarefas":"tarefas","frota":"tarefas","envios flex":"flex","flex":"flex","entregues":"entregues"}; const tab=map[label]||(label.includes("separados")?"separados":label.includes("log")?"logistica":label.includes("flex")?"flex":""); if(tab){e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); go(tab);}},true); }
   async function init(){
+    loadPersistentCaches();
     state.tarefas=loadTarefas();
     autoCleanFlexStorageV87();
     layout();
@@ -4635,7 +4931,7 @@ function renderMap(type,forceFit=false,listOverride=null){
     startPlanilhaInstantaneaPolling();
     setTimeout(()=>refreshPlanilhaInstantanea(true), 2500);
   }
-  window.VescoV8={__v82:true,__v821:true,__v84:true,__v86:true,__v861:true,__v87:true,__v871:true,__v872:true,__v873:true,__v874:true,__v875:true,__v876:true,__v90:true,__v91:true,__v92:true,__v921:true,__v922:true,__v93:true,__v94:true,__v95:true,__v100:true,__v101:true,__v102:true,__v103:true,__v104:true,__v105:true,__v106:true,__v107:true,__v108:true,__v109:true,__v1010:true,__v1011:true,__v1012:true,__v1013:true,__v1014:true,__v1015:true,__v1016:true,__v1017:true,__v1018:true,__v1019:true,__v1020:true,__v1021:true,__v1022:true,__v1023:true,__v1024:true,__v1027:true,__v1028:true,__v1029:true,__v1030:true,__v1031:true,__v1032:true,__v1035:true,__v1036:true,__v1037:true,__v1038:true,__v1039:true,__v1040:true,__v1041:true,__v1042:true,__v1043:true,__v1048:true,__v1049:true,state,init,go,
+  window.VescoV8={__v82:true,__v821:true,__v84:true,__v86:true,__v861:true,__v87:true,__v871:true,__v872:true,__v873:true,__v874:true,__v875:true,__v876:true,__v90:true,__v91:true,__v92:true,__v921:true,__v922:true,__v93:true,__v94:true,__v95:true,__v100:true,__v101:true,__v102:true,__v103:true,__v104:true,__v105:true,__v106:true,__v107:true,__v108:true,__v109:true,__v1010:true,__v1011:true,__v1012:true,__v1013:true,__v1014:true,__v1015:true,__v1016:true,__v1017:true,__v1018:true,__v1019:true,__v1020:true,__v1021:true,__v1022:true,__v1023:true,__v1024:true,__v1027:true,__v1028:true,__v1029:true,__v1030:true,__v1031:true,__v1032:true,__v1035:true,__v1036:true,__v1037:true,__v1038:true,__v1039:true,__v1040:true,__v1041:true,__v1042:true,__v1043:true,__v1048:true,__v1049:true,__v1050:true,__v1051:true,__v1052:true,state,init,go,scheduleRender,setListPage,
     openFlexMonth:async(month)=>{state.month=month||state.month; const m=document.getElementById("v8Month"); if(m)m.value=state.month; await loadData(true); if(!flexList().length) await refreshFlexFromAppsScriptOnly(false); renderFlex();},
     saveFlexMonthNow:()=>{const saved=saveStoredFlex(flexList(),state.month); alert(saved.saved?`Mês armazenado: ${monthLabel(saved.month)} — ${saved.total} pedido(s).`:`Nada novo para armazenar em ${monthLabel(saved.month)}.`); renderFlex(); return saved;},
     refreshFlexOnly:async()=>{showLoading(true); await refreshFlexFromAppsScriptOnly(true); showLoading(false); renderFlex();},
@@ -4645,12 +4941,12 @@ function renderMap(type,forceFit=false,listOverride=null){
     sleep,
     routeReadyList,routeFlexExtras,addFlexToRouteByCode,removeFlexFromRoute,routeMotoristaLink,routeOfflinePayload,encodeRoutePayload,routeOrdersRows,routeOrdersStats,renderPedidosEmRota,confirmarEntregaRotaSite,openMapForRouteOrder,shareRouteById,openShareRouteModal,copyShareInput,closeShareModal,copyRouteLinkById,copyRouteLinkDirect,openWhatsAppRouteById,toggleRotasCriadas,abrirPedidoNoMapa,abrirCorrecaoEndereco,marcarComoRetirada,whatsappRouteLink,saveRouteFirebase,testFirebaseRoutes,fastRouteLink,localRotas,firebasePatchOrder,refreshFromAppsScriptBackground,loadFirebaseSnapshot,saveFirebaseSnapshot,refreshEntreguesAgora,loadDeliveredFromFirebaseRoutes,refreshMotoristasLocalizacao,renderMotoristasAoVivo,safeRenderMotoristasAoVivo,renderDriverLiveMap,mostrarMotoristaNoMapa,focarMotoristaRota,startMotoristaTrackingPolling,stopMotoristaTrackingPolling,
     salvarDetalhesPedido,marcarPendenciaProduto,resolverPendenciaProduto,pendenciasProdutoList,abrirRelatorioPendencia,abrirObsLinkPedido,salvarObsLinkPedido,salvarRelatorioPendencia,fecharPedidoModal,
-    runFlexGeocode,statusFlexGeocode,autoGeocodeMap,gerarPingsMapa,geocodeAddressViaFlexApi,openMapForOrder,openGoogleMapsForList,googleMapsDirectionsUrlFromOrders,
+    runFlexGeocode,statusFlexGeocode,autoGeocodeMap,gerarPingsMapa,geocodeAddressViaFlexApi,cleanDisplayAddress,extractCep,address,openMapForOrder,openGoogleMapsForList,googleMapsDirectionsUrlFromOrders,
     renderTarefasFrota,registrarTarefaFrota,concluirTarefaFrota,removerTarefaFrota,tarefasFrotaList,
     sidebar:()=>{state.sidebarCollapsed=!state.sidebarCollapsed; document.body.classList.toggle("v8-sidebar-collapsed",state.sidebarCollapsed); localStorage.setItem("vesco:v8:sidebarCollapsed",state.sidebarCollapsed?"1":"0");},
-    today:async()=>{state.date=todayISO(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; await loadData(true); render();},refresh:async()=>{await loadData(true); render();},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,definirOperador,operadorAtual,produtosText,pagamentoText,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{linhaAoVivoMultipontos:true,statusRealtimeFix:true,retiradaRecebedorFix:true,rotaCalculadaFix:true,entreguesComprovantesFix:true,entreguesFirebaseDireto:true,leituraInteligenteV1019:true,realtimeInstantaneo:true,retiradaInteligente:true,firebaseLimpoV1020:true,semPedidoFantasma:true,realtimeLimitado:true,retiradaOlistV1021:true,rotasRecolhiveis:true,botaoMapaPedido:true,retiradaCodigoRD:true,separacaoSemRetirada:true,mapaSpV1023:true,geocodeSaoPaulo:true,semBotaoCorrigirEndereco:true,easyPanelFirstV1024:true,appsScriptEmergencia:true,atualizarViaEasyPanel:true,mobilePendenciaV1027:true,pendenciaFirebaseFirst:true,mobileCardsV1027:true,renderSeparadosFixV1027:true,separadosHojeDataRealV1027:true,mobileFullV1027:true,frontendMarketplaceCleanV1027:true,pendenciaNaoEntregaV1028:true,operadorRotaEntreguesV1028:true,planilhaStatusVetoV1029:true,rotasSomenteDataV1030:true,prontoIncluiSeparadosHojeV1031:true,flexApiFallbackV1031:true,enderecoLeituraAmpliadaV1031:true,prontoSomenteSeparadosDiaV1032:true,motoristasSomenteRotasDiaV1032:true,enderecoMestrePreservadoV1032:true,renderLeveV1032:true,performanceV1035:true,mapaLeveV1035:true,tabelasLimitadasV1035:true,planilhaFirstV1037:true,planilhaInstantV1038:true,pollingPlanilhaV1038:true,separacaoIncluiRetiradaV1038:true,workerFirstV1039:true,snapshotLiteFirstV1039:true,semAppsScriptAntigoV1039:true,workerPlanilhaV1040:true,planilhaPedidosEndpointV1040:true,entregaTransportadoraV1041:true,modoLeveV1042:true,hashEstavelV1042:true,pollingInteligenteV1042:true,firebaseRealtimeOffV1042:true,canceladosForaV1043:true,flexMantidoV1043:true,entregaRetiradaCorrigidaV1043:true,hotfixRetiradaFinalizadaV1044:true,semReferenceErrorV1044:true,hotfixIsDeliveredV1045:true,semBootErrorV1045:true,hotfixIsFlexIndicatorV1046:true,semBootErrorV1046:true,flexWorkerV1047:true,regraFlexPlanilhaV1047:true,mapaPingsV1047:true,erpValorNumeroFixV1048:true,pingsPersistentesV1048:true,flexAutorecoveryV1049:true,flexSempreCarregadoV1049:true,version:"V10.49-FLEX-AUTORECOVERY",date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFontePlanilha:false,apiWorkerFirst:EASYPANEL_URL,planilhaBridgeUrlOpcional:PLANILHA_BRIDGE_URL,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,flexDiagnostics:state.lastFlexDiagnostics||state.lastFlexPayload?.diagnostics||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
+    today:async()=>{state.date=todayISO(); invalidatePerfCaches(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; state.pageByTab={}; await loadData(true); scheduleRender(true);},refresh:async()=>{await loadData(true); scheduleRender(true);},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,definirOperador,operadorAtual,produtosText,pagamentoText,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{linhaAoVivoMultipontos:true,statusRealtimeFix:true,retiradaRecebedorFix:true,rotaCalculadaFix:true,entreguesComprovantesFix:true,entreguesFirebaseDireto:true,leituraInteligenteV1019:true,realtimeInstantaneo:true,retiradaInteligente:true,firebaseLimpoV1020:true,semPedidoFantasma:true,realtimeLimitado:true,retiradaOlistV1021:true,rotasRecolhiveis:true,botaoMapaPedido:true,retiradaCodigoRD:true,separacaoSemRetirada:true,mapaSpV1023:true,geocodeSaoPaulo:true,semBotaoCorrigirEndereco:true,easyPanelFirstV1024:true,appsScriptEmergencia:true,atualizarViaEasyPanel:true,mobilePendenciaV1027:true,pendenciaFirebaseFirst:true,mobileCardsV1027:true,renderSeparadosFixV1027:true,separadosHojeDataRealV1027:true,mobileFullV1027:true,frontendMarketplaceCleanV1027:true,pendenciaNaoEntregaV1028:true,operadorRotaEntreguesV1028:true,planilhaStatusVetoV1029:true,rotasSomenteDataV1030:true,prontoIncluiSeparadosHojeV1031:true,flexApiFallbackV1031:true,enderecoLeituraAmpliadaV1031:true,prontoSomenteSeparadosDiaV1032:true,motoristasSomenteRotasDiaV1032:true,enderecoMestrePreservadoV1032:true,renderLeveV1032:true,performanceV1035:true,mapaLeveV1035:true,tabelasLimitadasV1035:true,planilhaFirstV1037:true,planilhaInstantV1038:true,pollingPlanilhaV1038:true,separacaoIncluiRetiradaV1038:true,workerFirstV1039:true,snapshotLiteFirstV1039:true,semAppsScriptAntigoV1039:true,workerPlanilhaV1040:true,planilhaPedidosEndpointV1040:true,entregaTransportadoraV1041:true,modoLeveV1042:true,hashEstavelV1042:true,pollingInteligenteV1042:true,firebaseRealtimeOffV1042:true,canceladosForaV1043:true,flexMantidoV1043:true,entregaRetiradaCorrigidaV1043:true,hotfixRetiradaFinalizadaV1044:true,semReferenceErrorV1044:true,hotfixIsDeliveredV1045:true,semBootErrorV1045:true,hotfixIsFlexIndicatorV1046:true,semBootErrorV1046:true,flexWorkerV1047:true,regraFlexPlanilhaV1047:true,mapaPingsV1047:true,erpValorNumeroFixV1048:true,pingsPersistentesV1048:true,flexAutorecoveryV1049:true,flexSempreCarregadoV1049:true,fluidezV1050:true,cacheGeocodePersistenteV1050:true,viaCepV1050:true,geocodeConcorrenteV1050:true,pollingAdaptativoV1050:true,navegacaoInstantaneaV1051:true,paginacaoLeveV1051:true,badgesCacheV1051:true,listasDerivadasCacheV1051:true,pollingSemConflitoV1051:true,mobileCompletoV1052:true,tabelasCardsAcessiveisV1052:true,filtrosMoveisV1052:true,mapaResponsivoV1052:true,modaisTelaCheiaV1052:true,paginacaoAdaptativaV1052:true,version:"V10.52-MOBILE-COMPLETO-TOUCH",date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFontePlanilha:false,apiWorkerFirst:EASYPANEL_URL,planilhaBridgeUrlOpcional:PLANILHA_BRIDGE_URL,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,flexDiagnostics:state.lastFlexDiagnostics||state.lastFlexPayload?.diagnostics||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
   window.VESCO_FORCE_PLANILHA = async function(){ return await refreshPlanilhaInstantanea(true); };
-  window.VESCO_FORCE_SNAPSHOT_LITE = async function(){ const ok = await refreshFromEasyPanel(false); render(); return ok; };
+  window.VESCO_FORCE_SNAPSHOT_LITE = async function(){ const ok = await refreshFromEasyPanel(false); scheduleRender(true); return ok; };
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",init); else init();
-  console.log("VESCO V10.49 ativo — Flex carregado independentemente do snapshot ERP e com auto-recuperação.");
+  console.log("VESCO V10.52 ativo — mobile completo, navegação touch, tabelas em cards e mapa responsivo.");
 })();

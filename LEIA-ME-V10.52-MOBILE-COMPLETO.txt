@@ -1,0 +1,42 @@
+VESCO CONTROL V10.52 — MOBILE COMPLETO
+
+PUBLICAÇÃO
+1. Substitua todos os arquivos do dashboard pelo conteúdo deste pacote.
+2. Confirme na raiz os arquivos:
+   - index.html
+   - modulo.vesco-v8-operacional.js
+   - vesco-v8-operacional.css
+   - vesco-mobile-v10.52.js
+   - vesco-mobile-v10.52.css
+3. Publique na Vercel e aguarde o deploy finalizar.
+4. No celular, feche a aba antiga, abra o painel novamente e recarregue sem cache.
+
+VALIDAÇÃO
+No console do navegador:
+
+VescoV8.debug().version
+
+Resultado esperado:
+V10.52-MOBILE-COMPLETO-TOUCH
+
+Também pode testar:
+
+window.VescoMobileV1052.version
+
+Resultado esperado:
+V10.52-MOBILE-COMPLETO
+
+MELHORIAS
+- Sidebar transformada em menu lateral deslizante, sem roubar largura da tela.
+- Busca e atualização sempre visíveis.
+- Data, mês, Hoje e relógio ficam no botão Filtros.
+- Tabelas transformadas em cards com o nome de cada campo.
+- Paginação reduzida para 10 itens no celular e 8 nas telas com mapa.
+- Botões e campos com áreas de toque maiores.
+- Mapas responsivos e controles ampliados.
+- Modais em tela cheia, compatíveis com teclado virtual e safe-area.
+- Barra inferior fixa em Android e iPhone.
+- Tratamento para retrato, paisagem, aparelhos pequenos e tablets.
+- Desktop preservado sem reestruturação do cabeçalho.
+
+Esta versão altera somente o dashboard. Não modifique Worker pai, Worker filho, Apps Script ou banco por causa deste pacote.

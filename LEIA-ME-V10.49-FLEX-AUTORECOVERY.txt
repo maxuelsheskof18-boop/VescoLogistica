@@ -1,0 +1,23 @@
+VESCO DASHBOARD V10.49 — FLEX AUTO RECOVERY
+
+Correções principais:
+
+1. O carregamento do ERP não encerra mais o boot antes da busca do Flex.
+2. O painel sempre consulta /flex-pedidos no primeiro carregamento.
+3. O botão Atualizar sempre relê ERP e Flex como fontes independentes.
+4. Linhas vindas do endpoint dedicado Flex não são descartadas apenas porque
+   uma implantação antiga omitiu marcador_flex_id no JSON.
+5. O debug mostra flexDiagnostics, flexRaw e flexAccepted.
+
+Console esperado:
+- VESCO index V10.49 carregado com sucesso.
+- VESCO V10.49 ativo — Flex carregado independentemente do snapshot ERP e com auto-recuperação.
+
+Teste no console:
+VescoV8.debug()
+
+Campos esperados:
+- version: V10.49-FLEX-AUTORECOVERY
+- flexRaw > 0
+- flexAccepted > 0
+- flex > 0

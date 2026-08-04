@@ -1,0 +1,13 @@
+VESCO CONTROL V10.48 — CORREÇÃO LOGÍSTICA ERP
+
+Correções:
+1. O painel agora lê numero, num e tiny_number e prioriza o número comercial do Tiny sobre o ID interno.
+2. Valores decimais com ponto ou vírgula são interpretados corretamente.
+3. O mapa limpa endereços duplicados/referências antes da geocodificação.
+4. Novo botão Gerar pings no Mapa ERP.
+5. Coordenadas geradas são persistidas no Firebase e reaproveitadas nas próximas cargas.
+
+Publicação:
+- Suba todos os arquivos desta pasta para o mesmo repositório/pasta do Vercel.
+- Não publique apenas o index.html: o arquivo modulo.vesco-v8-operacional.js também precisa ser substituído.
+- Após publicar, faça Ctrl+F5 no navegador.

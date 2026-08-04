@@ -1,0 +1,19 @@
+VESCO CONTROL V10.51 — NAVEGAÇÃO INSTANTÂNEA
+
+Correções:
+- troca de telas não espera rede nem Firebase;
+- Separação, Separados, Logística, Flex, Entregues e Retiradas usam paginação leve;
+- somente 24 linhas por tela (20 nas telas com mapa);
+- contadores do menu são calculados uma vez por atualização de dados;
+- polling não disputa o navegador enquanto o usuário troca de página;
+- mapa só é desmontado quando realmente necessário;
+- blur e sombras pesadas foram reduzidos no desktop.
+
+Publicação:
+1. Substitua todos os arquivos do dashboard.
+2. Aguarde a Vercel concluir.
+3. Use Ctrl+F5.
+4. Console esperado: VESCO index V10.51 e VESCO V10.51 ativo.
+5. VescoV8.debug().version deve ser V10.51-NAVEGACAO-INSTANTANEA-PAGINACAO.
+
+Não altera worker, Apps Script nem banco.
