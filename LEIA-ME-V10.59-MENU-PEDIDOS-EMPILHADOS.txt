@@ -1,0 +1,11 @@
+VESCO CONTROL V10.59 — CORREÇÃO FOCADA NO MOBILE
+
+Alterações somente no mobile (até 899 px):
+- O menu lateral abre sempre expandido, com os nomes visíveis.
+- O estado recolhido do desktop não contamina o menu mobile.
+- O menu fecha pelo X, pelo fundo escuro ou ao escolher uma seção.
+- Até 12 pedidos aparecem na mesma página, em cards empilhados verticalmente.
+- Telas com mapa mostram até 8 pedidos empilhados por página.
+- Desktop preservado.
+
+Publicação: substitua index.html, modulo.vesco-v8-operacional.js, vesco-mobile-v10.59.js e vesco-mobile-v10.59.css.

@@ -1,0 +1,664 @@
+/*
+  VESCO V10.55 — RESPONSIVO UNIVERSAL
+  Última camada CSS. Neutraliza regras móveis históricas conflitantes.
+*/
+:root{
+  --v1055-safe-top:env(safe-area-inset-top,0px);
+  --v1055-safe-right:env(safe-area-inset-right,0px);
+  --v1055-safe-bottom:env(safe-area-inset-bottom,0px);
+  --v1055-safe-left:env(safe-area-inset-left,0px);
+  --v1055-sidebar-full:250px;
+  --v1055-sidebar-compact:78px;
+  --v1055-bottom-nav:76px;
+  --v1055-gap:clamp(8px,1.15vw,18px);
+  --v1055-pad:clamp(8px,1.4vw,22px);
+  --v1055-radius:clamp(14px,1.3vw,22px);
+}
+
+html{
+  width:100%!important;
+  min-width:0!important;
+  min-height:100%!important;
+  height:100%!important;
+  max-height:none!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  scroll-behavior:auto!important;
+  overscroll-behavior-y:auto!important;
+  -webkit-text-size-adjust:100%;
+}
+body.vesco-v9{
+  position:static!important;
+  inset:auto!important;
+  width:100%!important;
+  min-width:0!important;
+  max-width:none!important;
+  min-height:100%!important;
+  height:auto!important;
+  max-height:none!important;
+  margin:0!important;
+  overflow-x:hidden!important;
+  overflow-y:visible!important;
+  touch-action:pan-y pinch-zoom!important;
+  overscroll-behavior-y:auto!important;
+  -webkit-overflow-scrolling:touch!important;
+}
+body.vesco-v9 *,body.vesco-v9 *::before,body.vesco-v9 *::after{box-sizing:border-box!important}
+body.vesco-v9 img,body.vesco-v9 svg,body.vesco-v9 canvas{max-width:100%}
+body.vesco-v9 button,body.vesco-v9 input,body.vesco-v9 select,body.vesco-v9 textarea{font:inherit}
+body.vesco-v9 button,body.vesco-v9 a{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+
+body.vesco-v9 #v8Shell{
+  position:relative!important;
+  display:grid!important;
+  grid-template-columns:var(--v1055-sidebar-full) minmax(0,1fr)!important;
+  width:100%!important;
+  min-width:0!important;
+  max-width:none!important;
+  min-height:100dvh!important;
+  height:auto!important;
+  overflow:visible!important;
+}
+body.vesco-v9 #v8Sidebar{
+  position:fixed!important;
+  top:0!important;
+  bottom:0!important;
+  left:0!important;
+  width:var(--v1055-sidebar-full)!important;
+  min-width:0!important;
+  max-width:calc(100vw - 40px)!important;
+  height:100dvh!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  overscroll-behavior:contain!important;
+  z-index:10020!important;
+  transform:none!important;
+}
+body.vesco-v9 #v8Main{
+  position:relative!important;
+  grid-column:2!important;
+  width:auto!important;
+  min-width:0!important;
+  max-width:none!important;
+  min-height:100dvh!important;
+  height:auto!important;
+  margin:0!important;
+  padding:0!important;
+  overflow:visible!important;
+}
+body.vesco-v9 #v8Topbar{
+  position:sticky!important;
+  top:0!important;
+  z-index:9000!important;
+  width:100%!important;
+  min-width:0!important;
+  max-width:none!important;
+  min-height:70px!important;
+  height:auto!important;
+  padding:10px var(--v1055-pad)!important;
+  gap:var(--v1055-gap)!important;
+}
+body.vesco-v9 #v8Content{
+  position:relative!important;
+  width:100%!important;
+  min-width:0!important;
+  max-width:none!important;
+  min-height:calc(100dvh - 70px)!important;
+  height:auto!important;
+  max-height:none!important;
+  padding:var(--v1055-pad)!important;
+  overflow:visible!important;
+  touch-action:pan-y pinch-zoom!important;
+  contain:none!important;
+  content-visibility:visible!important;
+  pointer-events:auto!important;
+  opacity:1!important;
+  transform:none!important;
+}
+body.vesco-v9.v1051-nav-busy #v8Content,
+body.vesco-v9.v1051-nav-busy #v8Content>*{
+  pointer-events:auto!important;
+  cursor:default!important;
+  opacity:1!important;
+}
+body.vesco-v9 #v8Content.v1051-page-ready{animation:none!important}
+
+/* Topbar unificado. */
+body.vesco-v9 #v8Topbar .v8-title{min-width:180px!important;display:flex!important;align-items:center!important;gap:10px!important}
+body.vesco-v9 #v8Topbar .v8-title>div{min-width:0!important}
+body.vesco-v9 #v8Title,body.vesco-v9 #v8Sub{max-width:100%;overflow:hidden;text-overflow:ellipsis}
+body.vesco-v9 #v8Topbar .v8-top-actions{display:flex!important;align-items:center!important;justify-content:flex-end!important;gap:8px!important;min-width:0!important;flex:1 1 auto!important}
+body.vesco-v9 .v1055-top-primary,body.vesco-v9 .v1055-top-secondary{display:flex;align-items:center;gap:8px;min-width:0}
+body.vesco-v9 .v1055-top-primary{flex:1 1 auto;justify-content:flex-end}
+body.vesco-v9 .v1055-top-secondary{flex:0 1 auto}
+body.vesco-v9 .v1055-filter-toggle{display:none!important}
+body.vesco-v9 #v8Search{width:clamp(170px,22vw,340px)!important;min-width:120px!important}
+body.vesco-v9 #v8Refresh{flex:0 0 auto!important}
+body.vesco-v9 #v8Date,body.vesco-v9 #v8Month{min-width:138px!important}
+body.vesco-v9 #v8Clock{flex:0 0 auto!important}
+
+/* Estruturas gerais fluidas. */
+body.vesco-v9 .v8-grid,
+body.vesco-v9 .v8-main-grid,
+body.vesco-v9 .v8-flex-layout,
+body.vesco-v9 .v9-dashboard-grid,
+body.vesco-v9 .v9-bottom-grid,
+body.vesco-v9 .v9-route-grid{
+  width:100%!important;
+  min-width:0!important;
+  gap:var(--v1055-gap)!important;
+}
+body.vesco-v9 .v8-card,
+body.vesco-v9 .v8-kpi,
+body.vesco-v9 .v9-kpi,
+body.vesco-v9 .v9-hero{
+  width:100%!important;
+  min-width:0!important;
+  max-width:none!important;
+  margin:0!important;
+  border-radius:var(--v1055-radius)!important;
+  contain:none!important;
+  content-visibility:visible!important;
+}
+body.vesco-v9 .v8-card{overflow:hidden!important}
+body.vesco-v9 .v8-card-head,
+body.vesco-v9 .v8-map-toolbar,
+body.vesco-v9 .v8-page-head{
+  min-width:0!important;
+  gap:10px!important;
+}
+body.vesco-v9 .v8-card-head>*,body.vesco-v9 .v8-page-head>*{min-width:0!important}
+body.vesco-v9 .v8-card-actions,
+body.vesco-v9 .v8-flex-actions,
+body.vesco-v9 .v9-route-actions,
+body.vesco-v9 .v8-row-actions,
+body.vesco-v9 .v8-actions,
+body.vesco-v9 .v1021-action-stack,
+body.vesco-v9 .v92-action-row{
+  min-width:0!important;
+  max-width:100%!important;
+  gap:8px!important;
+  flex-wrap:wrap!important;
+}
+body.vesco-v9 .v8-btn{
+  min-width:0!important;
+  min-height:42px!important;
+  white-space:normal!important;
+  overflow-wrap:anywhere!important;
+}
+body.vesco-v9 input,body.vesco-v9 select,body.vesco-v9 textarea{
+  min-width:0!important;
+  max-width:100%!important;
+}
+
+/* Desktop/tablet: tabela permanece tabela e o wrapper rola apenas horizontalmente. */
+body.vesco-v9 .v8-table-wrap{
+  width:100%!important;
+  min-width:0!important;
+  max-width:100%!important;
+  overflow-x:auto!important;
+  overflow-y:visible!important;
+  -webkit-overflow-scrolling:touch!important;
+  overscroll-behavior-x:contain!important;
+}
+body.vesco-v9 table.v8-table{
+  width:100%!important;
+  max-width:none!important;
+  border-collapse:collapse!important;
+}
+body.vesco-v9 table.v8-table th,body.vesco-v9 table.v8-table td{min-width:0}
+body.vesco-v9 .v8-order,body.vesco-v9 .v8-client,body.vesco-v9 .v8-client small,body.vesco-v9 .v8-order small{
+  min-width:0!important;
+  max-width:100%!important;
+  overflow-wrap:anywhere!important;
+  white-space:normal!important;
+}
+
+/* Paginação nunca fica sobre a lista. */
+body.vesco-v9 .v1051-pager{
+  position:static!important;
+  width:100%!important;
+  max-width:100%!important;
+  margin:10px 0 0!important;
+  z-index:auto!important;
+}
+
+/* Mapas e gráficos fluidos. */
+body.vesco-v9 .v8-map,body.vesco-v9 #v8Map,body.vesco-v9 .leaflet-container{
+  width:100%!important;
+  max-width:100%!important;
+  min-height:300px!important;
+  height:clamp(300px,52dvh,620px)!important;
+  max-height:620px!important;
+  border-radius:0 0 var(--v1055-radius) var(--v1055-radius)!important;
+  contain:layout paint!important;
+}
+body.vesco-v9 .leaflet-popup-content-wrapper{max-width:min(360px,calc(100vw - 40px))!important}
+body.vesco-v9 .leaflet-popup-content{max-width:min(320px,calc(100vw - 78px))!important;overflow-wrap:anywhere!important}
+body.vesco-v9 .v9-bars-chart{max-width:100%!important;overflow-x:auto!important}
+
+/* Modais: somente o conteúdo do modal rola. */
+body.vesco-v9 .v8-modal,body.vesco-v9 .v8-dialog,body.vesco-v9 #v92PedidoModal,body.vesco-v9 .v92-modal{max-width:100vw!important}
+body.vesco-v9 .v8-modal-card,body.vesco-v9 .v8-dialog-card,body.vesco-v9 .v92-modal-card{
+  max-width:min(760px,calc(100vw - 24px))!important;
+  max-height:calc(100dvh - 24px)!important;
+}
+body.vesco-v9 .v8-modal-body,body.vesco-v9 .v8-dialog-body,body.vesco-v9 .v92-modal-body{
+  min-height:0!important;
+  overflow-y:auto!important;
+  -webkit-overflow-scrolling:touch!important;
+}
+
+/* Compact desktop / tablet landscape. */
+@media (min-width:900px) and (max-width:1199px){
+  body.vesco-v9 #v8Shell{grid-template-columns:var(--v1055-sidebar-compact) minmax(0,1fr)!important}
+  body.vesco-v9 #v8Sidebar{width:var(--v1055-sidebar-compact)!important}
+  body.vesco-v9 #v8Main{grid-column:2!important}
+  body.vesco-v9 #v8Sidebar .v8-brand-text,
+  body.vesco-v9 #v8Sidebar .v8-menu span,
+  body.vesco-v9 #v8Sidebar .v8-side-foot{display:none!important}
+  body.vesco-v9 #v8Sidebar .v8-brand{justify-content:center!important;padding:12px 8px!important}
+  body.vesco-v9 #v8Sidebar .v8-logo{flex:0 0 42px!important}
+  body.vesco-v9 #v8Sidebar .v8-menu{padding:10px 8px!important}
+  body.vesco-v9 #v8Sidebar .v8-menu button{justify-content:center!important;padding:0!important}
+  body.vesco-v9 #v8Sidebar .v8-menu button i{width:auto!important;font-size:18px!important}
+  body.vesco-v9 #v8Sidebar .v8-badge{position:absolute!important;right:4px!important;top:3px!important}
+  body.vesco-v9 #v8Collapse{display:none!important}
+  body.vesco-v9 #v8Topbar{flex-wrap:wrap!important}
+  body.vesco-v9 #v8Topbar .v8-title{flex:1 1 240px!important}
+  body.vesco-v9 #v8Topbar .v8-top-actions{flex:1 1 100%!important;justify-content:stretch!important}
+  body.vesco-v9 .v1055-top-primary{flex:1 1 300px!important;justify-content:flex-start!important}
+  body.vesco-v9 .v1055-top-secondary{flex:1 1 460px!important;justify-content:flex-end!important}
+  body.vesco-v9 #v8Search{width:100%!important;flex:1 1 220px!important}
+  body.vesco-v9 .v9-dashboard-grid,body.vesco-v9 .v9-bottom-grid,body.vesco-v9 .v9-route-grid,body.vesco-v9 .v8-grid{grid-template-columns:1fr!important}
+}
+
+/* Drawer + bottom bar em tablets e telefones. */
+@media (max-width:899px), (max-height:640px) and (max-width:1100px){
+  body.vesco-v9{
+    padding:0 0 calc(var(--v1055-bottom-nav) + var(--v1055-safe-bottom) + 16px)!important;
+    background:#edf4fb!important;
+  }
+  body.vesco-v9 #v8Shell{
+    display:block!important;
+    grid-template-columns:1fr!important;
+    min-height:100dvh!important;
+  }
+  body.vesco-v9 #v8Sidebar{
+    top:0!important;
+    bottom:0!important;
+    left:0!important;
+    width:min(88vw,360px)!important;
+    max-width:calc(100vw - 32px)!important;
+    height:100dvh!important;
+    padding-top:var(--v1055-safe-top)!important;
+    transform:translate3d(-105%,0,0)!important;
+    transition:transform .18s ease-out!important;
+    box-shadow:24px 0 60px rgba(2,6,23,.36)!important;
+  }
+  body.vesco-v9.v8-mobile-menu-open #v8Sidebar{transform:translate3d(0,0,0)!important}
+  body.vesco-v9 #v8Sidebar .v8-brand-text,
+  body.vesco-v9 #v8Sidebar .v8-menu span,
+  body.vesco-v9 #v8Sidebar .v8-side-foot{display:block!important}
+  body.vesco-v9 #v8Sidebar .v8-brand{justify-content:flex-start!important;padding:14px 58px 14px 14px!important}
+  body.vesco-v9 #v8Sidebar .v8-menu{padding:12px!important}
+  body.vesco-v9 #v8Sidebar .v8-menu button{
+    position:relative!important;
+    width:100%!important;
+    min-height:48px!important;
+    justify-content:flex-start!important;
+    gap:12px!important;
+    padding:9px 12px!important;
+  }
+  body.vesco-v9 #v8Sidebar .v8-menu button i{width:24px!important;text-align:center!important}
+  body.vesco-v9 #v8Sidebar #v8Collapse{display:none!important}
+  body.vesco-v9 .v1055-sidebar-close{
+    display:grid!important;
+    place-items:center!important;
+    position:absolute!important;
+    top:calc(12px + var(--v1055-safe-top))!important;
+    right:12px!important;
+    width:42px!important;
+    height:42px!important;
+    border:0!important;
+    border-radius:13px!important;
+    background:rgba(255,255,255,.12)!important;
+    color:#fff!important;
+    font-size:19px!important;
+  }
+  body.vesco-v9 #v8MobileOverlay{
+    display:block!important;
+    visibility:hidden!important;
+    pointer-events:none!important;
+    position:fixed!important;
+    inset:0!important;
+    z-index:10010!important;
+    opacity:0!important;
+    background:rgba(2,6,23,.52)!important;
+    transition:opacity .16s ease!important;
+  }
+  body.vesco-v9.v8-mobile-menu-open #v8MobileOverlay{
+    visibility:visible!important;
+    pointer-events:auto!important;
+    opacity:1!important;
+  }
+  body.vesco-v9 #v8Main{
+    grid-column:1!important;
+    width:100%!important;
+    min-height:100dvh!important;
+  }
+  body.vesco-v9 #v8Topbar{
+    position:sticky!important;
+    top:0!important;
+    display:block!important;
+    min-height:0!important;
+    padding:calc(8px + var(--v1055-safe-top)) max(8px,var(--v1055-safe-right)) 8px max(8px,var(--v1055-safe-left))!important;
+    border-radius:0 0 18px 18px!important;
+    background:rgba(248,251,255,.98)!important;
+    backdrop-filter:none!important;
+  }
+  body.vesco-v9 #v8Topbar .v8-title{
+    width:100%!important;
+    min-width:0!important;
+    margin-bottom:8px!important;
+  }
+  body.vesco-v9 .v8-mobile-menu-btn{
+    display:grid!important;
+    place-items:center!important;
+    flex:0 0 42px!important;
+    width:42px!important;
+    height:42px!important;
+  }
+  body.vesco-v9 #v8Title{font-size:clamp(17px,4.7vw,21px)!important;white-space:nowrap!important}
+  body.vesco-v9 #v8Sub{font-size:11px!important;white-space:nowrap!important}
+  body.vesco-v9 #v8Topbar .v8-top-actions{display:block!important;width:100%!important}
+  body.vesco-v9 .v1055-top-primary{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) 48px 48px!important;
+    gap:7px!important;
+    width:100%!important;
+  }
+  body.vesco-v9 .v1055-top-primary #v8Search{
+    display:block!important;
+    visibility:visible!important;
+    opacity:1!important;
+    grid-column:1!important;
+    grid-row:1!important;
+    width:100%!important;
+    min-width:0!important;
+    height:46px!important;
+    font-size:16px!important;
+  }
+  body.vesco-v9 .v1055-top-primary #v8Refresh,
+  body.vesco-v9 .v1055-filter-toggle{
+    display:grid!important;
+    visibility:visible!important;
+    opacity:1!important;
+    place-items:center!important;
+    width:48px!important;
+    min-width:48px!important;
+    height:46px!important;
+    padding:0!important;
+    border-radius:13px!important;
+  }
+  body.vesco-v9 .v1055-top-primary #v8Refresh{grid-column:2!important;grid-row:1!important}
+  body.vesco-v9 .v1055-top-primary .v1055-filter-toggle{grid-column:3!important;grid-row:1!important}
+  body.vesco-v9 .v1055-top-primary #v8Refresh span,
+  body.vesco-v9 .v1055-filter-toggle span{display:none!important}
+  body.vesco-v9 .v1055-top-secondary{
+    display:none!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:8px!important;
+    width:100%!important;
+    margin-top:8px!important;
+    padding:9px!important;
+    border:1px solid #dbe7f3!important;
+    border-radius:14px!important;
+    background:#edf4fb!important;
+  }
+  body.vesco-v9.v1055-filters-open .v1055-top-secondary{display:grid!important}
+  body.vesco-v9 .v1055-top-secondary>*{
+    display:block!important;
+    visibility:visible!important;
+    opacity:1!important;
+    width:100%!important;
+    min-width:0!important;
+    min-height:44px!important;
+    font-size:16px!important;
+  }
+  body.vesco-v9 .v1055-top-secondary #v8Clock{display:grid!important;place-items:center!important}
+  body.vesco-v9 #v8Content{
+    min-height:0!important;
+    padding:clamp(7px,2vw,14px)!important;
+    padding-bottom:calc(var(--v1055-bottom-nav) + var(--v1055-safe-bottom) + 24px)!important;
+  }
+  body.vesco-v9 #v8MobileBar{
+    display:grid!important;
+    grid-template-columns:repeat(5,minmax(0,1fr))!important;
+    position:fixed!important;
+    left:max(8px,var(--v1055-safe-left))!important;
+    right:max(8px,var(--v1055-safe-right))!important;
+    bottom:calc(8px + var(--v1055-safe-bottom))!important;
+    width:auto!important;
+    min-width:0!important;
+    min-height:64px!important;
+    z-index:10000!important;
+    gap:2px!important;
+    padding:6px!important;
+    border-radius:20px!important;
+    background:#071a31!important;
+    border:1px solid rgba(148,163,184,.22)!important;
+    box-shadow:0 12px 34px rgba(2,6,23,.30)!important;
+  }
+  body.vesco-v9 #v8MobileBar button{
+    position:relative!important;
+    display:grid!important;
+    place-items:center!important;
+    gap:3px!important;
+    width:100%!important;
+    min-width:0!important;
+    min-height:52px!important;
+    padding:5px 2px!important;
+    border-radius:14px!important;
+    font-size:10px!important;
+    line-height:1!important;
+    pointer-events:auto!important;
+  }
+  body.vesco-v9 #v8MobileBar button i{font-size:17px!important}
+  body.vesco-v9 #v8MobileBar .v8-badge{position:absolute!important;top:2px!important;right:7px!important}
+
+  /* Layouts viram uma coluna sem limitar a largura. */
+  body.vesco-v9 .v9-dashboard-grid,
+  body.vesco-v9 .v9-bottom-grid,
+  body.vesco-v9 .v9-route-grid,
+  body.vesco-v9 .v8-grid,
+  body.vesco-v9 .v8-main-grid,
+  body.vesco-v9 .v8-flex-layout{display:grid!important;grid-template-columns:minmax(0,1fr)!important}
+  body.vesco-v9 .v9-hero{display:grid!important;grid-template-columns:minmax(0,1fr)!important;align-items:start!important;padding:clamp(14px,3.6vw,20px)!important}
+  body.vesco-v9 .v9-hero-actions{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;width:100%!important}
+  body.vesco-v9 .v9-kpi-grid,body.vesco-v9 .v8-kpis{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
+  body.vesco-v9 .v8-kpi,body.vesco-v9 .v9-kpi{padding:12px!important}
+  body.vesco-v9 .v8-card-head,body.vesco-v9 .v8-map-toolbar,body.vesco-v9 .v8-page-head{
+    display:flex!important;
+    flex-direction:column!important;
+    align-items:stretch!important;
+    padding:12px!important;
+  }
+  body.vesco-v9 .v8-card-actions,
+  body.vesco-v9 .v8-flex-actions,
+  body.vesco-v9 .v9-route-actions,
+  body.vesco-v9 .v8-row-actions,
+  body.vesco-v9 .v8-actions,
+  body.vesco-v9 .v1021-action-stack,
+  body.vesco-v9 .v92-action-row{
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    width:100%!important;
+  }
+  body.vesco-v9 .v8-card-actions .v8-btn,
+  body.vesco-v9 .v8-flex-actions .v8-btn,
+  body.vesco-v9 .v8-row-actions .v8-btn,
+  body.vesco-v9 .v8-actions .v8-btn,
+  body.vesco-v9 .v1021-action-stack .v8-btn,
+  body.vesco-v9 .v92-action-row .v8-btn{width:100%!important;min-height:44px!important}
+
+  /* Todas as tabelas se tornam cards, com rótulos gerados pelo JS. */
+  body.vesco-v9 .v8-table-wrap{overflow:visible!important;padding:0 8px 8px!important}
+  body.vesco-v9 table.v8-table,
+  body.vesco-v9 table.v8-table tbody,
+  body.vesco-v9 table.v8-table tr,
+  body.vesco-v9 table.v8-table td{display:block!important;width:100%!important;min-width:0!important;max-width:100%!important}
+  body.vesco-v9 table.v8-table thead{display:none!important}
+  body.vesco-v9 table.v8-table tbody{padding:0!important}
+  body.vesco-v9 table.v8-table tbody tr{
+    margin:8px 0!important;
+    padding:10px!important;
+    border:1px solid #dbe7f3!important;
+    border-radius:15px!important;
+    background:#fff!important;
+    box-shadow:0 5px 14px rgba(15,23,42,.055)!important;
+    overflow:visible!important;
+    contain:none!important;
+    content-visibility:visible!important;
+  }
+  body.vesco-v9 table.v8-table tbody td{
+    display:grid!important;
+    grid-template-columns:minmax(92px,31%) minmax(0,1fr)!important;
+    align-items:start!important;
+    gap:8px!important;
+    padding:7px 0!important;
+    border:0!important;
+    white-space:normal!important;
+    overflow:visible!important;
+    overflow-wrap:anywhere!important;
+  }
+  body.vesco-v9 table.v8-table tbody td::before{
+    content:attr(data-label)!important;
+    display:block!important;
+    min-width:0!important;
+    color:#64748b!important;
+    font-size:10px!important;
+    line-height:1.25!important;
+    font-weight:900!important;
+    text-transform:uppercase!important;
+    letter-spacing:.035em!important;
+    overflow-wrap:anywhere!important;
+  }
+  body.vesco-v9 table.v8-table tbody td.v8-empty,
+  body.vesco-v9 table.v8-table tbody td[colspan]{display:block!important;text-align:center!important}
+  body.vesco-v9 table.v8-table tbody td.v8-empty::before,
+  body.vesco-v9 table.v8-table tbody td[colspan]::before{display:none!important}
+  body.vesco-v9 table.v8-table tbody td:last-child{padding-top:10px!important}
+
+  body.vesco-v9 .v1051-pager{
+    display:grid!important;
+    grid-template-columns:minmax(76px,.75fr) minmax(0,1.5fr) minmax(76px,.75fr)!important;
+    gap:6px!important;
+    padding:8px!important;
+    border:1px solid #dbe7f3!important;
+    border-radius:14px!important;
+    background:#f8fbff!important;
+  }
+  body.vesco-v9 .v1051-pager span{align-self:center!important;text-align:center!important;font-size:10px!important;white-space:normal!important}
+  body.vesco-v9 .v1051-pager .v8-btn{min-height:40px!important;padding:6px!important;font-size:11px!important}
+
+  body.vesco-v9 .v8-map,body.vesco-v9 #v8Map,body.vesco-v9 .leaflet-container{
+    min-height:280px!important;
+    height:clamp(280px,50dvh,520px)!important;
+  }
+  body.vesco-v9 input,body.vesco-v9 select,body.vesco-v9 textarea{font-size:16px!important}
+  body.vesco-v9 .v8-tarefa-form,body.vesco-v9 .v9-route-form,body.vesco-v9 .v8-route-form,body.vesco-v9 .v92-form-grid{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr)!important;
+    gap:9px!important;
+    padding:12px!important;
+  }
+
+  /* Modal ocupa viewport e não trava a página depois de fechar. */
+  body.vesco-v9 .v8-modal,body.vesco-v9 .v8-dialog,body.vesco-v9 #v92PedidoModal,body.vesco-v9 .v92-modal{
+    padding:0!important;
+    align-items:stretch!important;
+    justify-content:stretch!important;
+  }
+  body.vesco-v9 .v8-modal-card,body.vesco-v9 .v8-dialog-card,body.vesco-v9 #v92PedidoModal .v92-modal-card,body.vesco-v9 .v92-modal-card{
+    position:fixed!important;
+    inset:0!important;
+    width:100vw!important;
+    max-width:100vw!important;
+    height:var(--vesco-dvh,100dvh)!important;
+    max-height:var(--vesco-dvh,100dvh)!important;
+    margin:0!important;
+    border-radius:0!important;
+    display:flex!important;
+    flex-direction:column!important;
+    overflow:hidden!important;
+  }
+  body.vesco-v9 .v8-modal-body,body.vesco-v9 .v8-dialog-body,body.vesco-v9 .v92-modal-body{
+    flex:1 1 auto!important;
+    min-height:0!important;
+    overflow-y:auto!important;
+    padding:12px!important;
+  }
+  body.vesco-v9 .v8-modal-card footer,body.vesco-v9 .v8-dialog-card footer,body.vesco-v9 .v92-modal-card footer{
+    flex:0 0 auto!important;
+    padding:10px 12px calc(10px + var(--v1055-safe-bottom))!important;
+  }
+
+  body.vesco-v9.v1055-keyboard-open #v8MobileBar{display:none!important}
+  body.vesco-v9.v1055-keyboard-open{padding-bottom:8px!important}
+}
+
+/* Telefones comuns. */
+@media (max-width:599px){
+  body.vesco-v9 .v9-hero-actions,
+  body.vesco-v9 .v8-card-actions,
+  body.vesco-v9 .v8-flex-actions,
+  body.vesco-v9 .v9-route-actions,
+  body.vesco-v9 .v8-row-actions,
+  body.vesco-v9 .v8-actions,
+  body.vesco-v9 .v1021-action-stack,
+  body.vesco-v9 .v92-action-row{grid-template-columns:minmax(0,1fr)!important}
+  body.vesco-v9 .v8-btn{min-height:46px!important}
+}
+
+/* Telefones estreitos e zoom alto. */
+@media (max-width:479px){
+  :root{--v1055-bottom-nav:72px}
+  body.vesco-v9 #v8Content{padding-left:6px!important;padding-right:6px!important}
+  body.vesco-v9 .v9-kpi-grid,body.vesco-v9 .v8-kpis{grid-template-columns:minmax(0,1fr)!important}
+  body.vesco-v9 table.v8-table tbody td{grid-template-columns:minmax(80px,34%) minmax(0,1fr)!important;gap:6px!important}
+  body.vesco-v9 #v8MobileBar{left:max(5px,var(--v1055-safe-left))!important;right:max(5px,var(--v1055-safe-right))!important;padding:5px!important;border-radius:17px!important}
+  body.vesco-v9 #v8MobileBar button{min-height:50px!important;font-size:9px!important}
+  body.vesco-v9 .v1051-pager{grid-template-columns:72px minmax(0,1fr) 72px!important}
+}
+
+/* Até 319 px: nenhum componente força largura. */
+@media (max-width:319px){
+  body.vesco-v9 .v1055-top-primary{grid-template-columns:minmax(0,1fr) 44px 44px!important;gap:4px!important}
+  body.vesco-v9 .v1055-top-primary #v8Refresh,body.vesco-v9 .v1055-filter-toggle{width:44px!important;min-width:44px!important}
+  body.vesco-v9 #v8MobileBar button span{display:none!important}
+  body.vesco-v9 #v8MobileBar button i{font-size:18px!important}
+  body.vesco-v9 table.v8-table tbody td{display:block!important;padding:7px 0!important}
+  body.vesco-v9 table.v8-table tbody td::before{margin-bottom:4px!important}
+  body.vesco-v9 .v1051-pager{grid-template-columns:1fr 1fr!important}
+  body.vesco-v9 .v1051-pager span{grid-column:1/-1!important;grid-row:1!important}
+}
+
+/* Paisagem baixa: mais área útil sem perder toque. */
+@media (orientation:landscape) and (max-height:640px) and (max-width:1100px){
+  :root{--v1055-bottom-nav:60px}
+  body.vesco-v9 #v8Topbar .v8-title{margin-bottom:5px!important}
+  body.vesco-v9 #v8MobileBar{min-height:54px!important;padding:4px!important}
+  body.vesco-v9 #v8MobileBar button{min-height:44px!important}
+  body.vesco-v9 #v8MobileBar button span{display:none!important}
+  body.vesco-v9 .v8-map,body.vesco-v9 #v8Map,body.vesco-v9 .leaflet-container{height:62dvh!important;min-height:240px!important}
+}
+
+@media (prefers-reduced-motion:reduce){
+  body.vesco-v9 *,body.vesco-v9 *::before,body.vesco-v9 *::after{
+    animation-duration:.001ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:.001ms!important;
+    scroll-behavior:auto!important;
+  }
+}

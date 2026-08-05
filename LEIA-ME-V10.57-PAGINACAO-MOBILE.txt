@@ -1,0 +1,42 @@
+VESCO CONTROL V10.57 — PAGINAÇÃO MOBILE DIRETA
+
+ESCOPO DESTA ATUALIZAÇÃO
+- Corrige somente a navegação entre pedidos no responsivo/mobile.
+- Preserva o menu e o layout desktop da V10.56.
+- Não altera EasyPanel, Tiny Worker, worker filho, Apps Script ou banco.
+
+CORREÇÕES
+1. Anterior/Próxima não dependem mais de onclick inline.
+2. O toque é tratado por pointerup, com click e teclado como fallback.
+3. A troca de página renderiza diretamente no mobile, sem aguardar a fila de polling.
+4. As duas barras de paginação deixam de ser sticky no mobile, evitando sobreposição invisível.
+5. A quantidade de pedidos por página passa a respeitar a largura real:
+   - até 299 px: 1
+   - 300–379 px: 2
+   - 380–479 px: 3
+   - 480–599 px: 4
+   - 600–759 px: 5
+   - 760–899 px: 6
+   - tablet touch 900–1099 px: 8
+6. Após mudar de página, a lista é reposicionada automaticamente.
+
+PUBLICAÇÃO
+Substitua no dashboard estes arquivos:
+- index.html
+- modulo.vesco-v8-operacional.js
+- vesco-mobile-v10.57.js
+- vesco-mobile-v10.57.css
+
+O index.html já aponta para os nomes corretos.
+Depois publique na Vercel, feche a aba antiga no celular e abra novamente.
+
+CONFIRMAÇÃO
+VescoV8.debug().version
+Resultado: V10.57-PAGINACAO-MOBILE-DIRETA
+
+TESTES EXECUTADOS
+- Toque Próxima/Anterior: 245, 320, 390, 768 e 900 px.
+- Avanço repetido e retorno de página.
+- Navegação pela barra inferior.
+- Sem overflow horizontal nas larguras testadas.
+- Desktop 1366 px: 24 linhas por página, sidebar 248 px e barra mobile oculta.

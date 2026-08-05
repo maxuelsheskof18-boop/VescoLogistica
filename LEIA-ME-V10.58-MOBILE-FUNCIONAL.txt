@@ -1,0 +1,42 @@
+VESCO CONTROL V10.58 — MOBILE FUNCIONAL
+
+CORREÇÃO EXATA
+- A V10.57 definia VESCO_PAGE_SIZE=24 quando a página era aberta primeiro em largura desktop.
+- Ao ativar o modo de dispositivo depois, o valor permanecia 24. Por isso a tela mostrava "1-11" e não criava Anterior/Próxima.
+- A V10.58 calcula a paginação pela largura ATUAL em cada renderização.
+- Até 479px: 1 pedido por página.
+- 480–699px: 2 pedidos por página.
+- 700–899px: 3 pedidos por página.
+- O redimensionamento e a rotação recalculam a paginação automaticamente.
+
+ROLAGEM
+- No mobile, somente #v8Main é o scroller.
+- html/body ficam fixos para não disputar a rolagem.
+- A barra inferior continua fixa sem bloquear os cards.
+- Ao navegar ou trocar de página, o scroller correto é reposicionado.
+
+DESKTOP
+- Nenhuma regra CSS acima de 899px foi alterada.
+- O menu lateral desktop continua usando vesco-v8-operacional.css original.
+
+PUBLICAÇÃO
+Substitua estes 4 arquivos na raiz:
+1. index.html
+2. modulo.vesco-v8-operacional.js
+3. vesco-mobile-v10.58.js
+4. vesco-mobile-v10.58.css
+
+Depois faça recarga sem cache.
+
+DIAGNÓSTICO NO CONSOLE
+VescoV8.debug()
+Esperado em 430px:
+- version: V10.58-MOBILE-PAGINACAO-REAL-SCROLLER
+- effectivePageSize: 1
+- pageScroller: v8Main
+
+VescoMobileV1058.scrollDiagnostics()
+Esperado:
+- scroller: v8Main
+- overflowY: auto
+- canScroll: true quando o conteúdo ultrapassar a tela

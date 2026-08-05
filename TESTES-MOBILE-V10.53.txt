@@ -1,0 +1,21 @@
+TESTES AUTOMATIZADOS V10.53
+
+Cenário pesado simulado:
+- 520 pedidos ERP
+- viewport 390 x 844
+- dispositivo mobile com toque
+- 20 trocas reais pela barra inferior
+
+Resultado:
+- 20/20 navegações concluídas
+- média do teste completo por toque: ~395 ms (inclui espera deliberada de 350 ms do teste)
+- maior tempo observado: ~426 ms
+- pointer-events do conteúdo: auto
+- bloqueio v1051-nav-busy preso: não
+- menu lateral: abriu e fechou
+- filtros: abriram
+- watchdog: liberou bloqueio simulado
+- rolagem horizontal: 0 px
+- erros JavaScript: 0
+
+O processamento isolado de Pronto para Envio caiu de aproximadamente 5,1 s para poucos milissegundos no cenário de 520 pedidos, após indexação e cache da fila de rota.

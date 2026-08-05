@@ -1,0 +1,28 @@
+VESCO CONTROL V10.53 — MOBILE DESTRAVADO
+
+CORREÇÕES PRINCIPAIS
+- Remove o bloqueio de pointer-events que podia congelar toda a tela após uma navegação interrompida.
+- Watchdog libera automaticamente a interface caso uma renderização seja cancelada.
+- Corrige a paginação mobile: agora usa realmente 8 pedidos e 6 pedidos nas telas com mapa.
+- Corrige routeReadyList, que fazia busca O(n²) e levava vários segundos ao abrir Rotas.
+- Cria índice em memória para localizar o pedido mestre em tempo praticamente constante.
+- Evita reaplicar o mesmo snapshot poucos segundos após o carregamento inicial.
+- Polling mobile passa a cada 60 segundos e não compete com navegação/toque.
+- MutationObserver observa somente a troca principal da tela, evitando ciclos de trabalho.
+- Mapas e geocode deixam de iniciar junto com o primeiro toque no celular; são abertos por Ajustar/Mapa/Localizar endereços.
+- visualViewport não recalcula o layout durante cada movimento de rolagem.
+
+PUBLICAÇÃO
+1. Substitua TODO o conteúdo do dashboard pelo conteúdo deste pacote.
+2. Publique na Vercel.
+3. No celular, feche a aba antiga e abra novamente.
+4. Caso ainda apareça V10.52, limpe os dados do site/cache e abra novamente.
+
+CONFIRMAÇÃO NO CONSOLE
+VescoV8.debug().version
+Resultado: V10.53-MOBILE-DESTRAVADO
+
+VescoMobileV1053.version
+Resultado: V10.53-MOBILE-DESTRAVADO
+
+Não é necessário alterar Tiny Worker, worker filho, Apps Script ou banco.

@@ -1,0 +1,9 @@
+VESCO V10.54
+
+1. Publique todo o dashboard desta pasta.
+2. No Apps Script da planilha, use exclusivamente CODIGO_APPS_SCRIPT_BRIDGE_V2_1_7_UPSERT_SEGURO_COMPLETO.gs e gere Nova versão mantendo a mesma URL.
+3. Publique o worker filho v2.1.13.
+4. Feche a aba antiga no celular e abra novamente.
+
+A V2.1.7 não apaga Comércio/Suprimentos quando recebe um lote parcial de Distribuidora.
+A V10.54 restaura o scroll do documento e remove travas antigas quando não há modal visível.

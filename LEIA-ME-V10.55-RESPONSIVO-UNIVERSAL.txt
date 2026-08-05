@@ -1,0 +1,39 @@
+VESCO CONTROL V10.55 — RESPONSIVO UNIVERSAL
+
+OBJETIVO
+Tornar todas as telas utilizáveis entre 240 px e telas 4K, em retrato, paisagem, tablet, notebook, desktop e aparelhos com zoom alto.
+
+ARQUIVOS PRINCIPAIS ALTERADOS
+- index.html
+- modulo.vesco-v8-operacional.js
+- vesco-responsive-v10.55.css
+- vesco-responsive-v10.55.js
+
+PUBLICAÇÃO
+1. Substitua todo o conteúdo do dashboard pelo conteúdo deste ZIP.
+2. Confirme que index.html está na raiz ao lado dos arquivos acima.
+3. Publique na Vercel.
+4. No celular, feche a aba antiga e abra o site novamente. Caso necessário, limpe os dados do site.
+
+CONFIRMAÇÃO NO CONSOLE
+VescoV8.debug().version
+Esperado: V10.55-RESPONSIVO-UNIVERSAL
+
+VescoResponsiveV1055.version
+Esperado: V10.55-RESPONSIVO-UNIVERSAL
+
+VescoResponsiveV1055.diagnostics()
+O campo horizontalOverflow deve ser 0 e locks deve ser [].
+
+PRINCIPAIS CORREÇÕES
+- Removeu o interceptador mobile que duplicava os cliques da navegação.
+- Restaurou a rolagem nativa do documento em qualquer largura.
+- Corrigiu a altura do HTML, que fazia o navegador considerar toda a página como viewport e impedia scroll.
+- Eliminou largura fixa e margem lateral antiga de 54/64 px no celular.
+- Menu lateral vira drawer abaixo de 900 px; entre 900 e 1199 px fica compacto; acima disso fica completo.
+- Tabelas viram cards abaixo de 900 px, sem rolagem horizontal.
+- Busca, atualizar e filtros ficam acessíveis em telas estreitas.
+- Paginação muda dinamicamente quando gira a tela ou altera o zoom.
+- Bottom navigation funciona até em 240 px.
+- Mapas, formulários, modais e botões usam tamanhos adaptativos.
+- Nenhuma alteração necessária no Tiny Worker, worker filho, Apps Script ou banco.

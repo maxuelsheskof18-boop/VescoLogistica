@@ -20,9 +20,9 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
 
-  <link rel="stylesheet" href="styles.css?v=1052" />
-  <link rel="stylesheet" href="vesco-v8-operacional.css?v=1052" />
-  <link rel="stylesheet" href="vesco-mobile-v10.52.css?v=1052" />
+  <link rel="stylesheet" href="styles.css?v=1059" />
+  <link rel="stylesheet" href="vesco-v8-operacional.css?v=1059" />
+  <link rel="stylesheet" href="vesco-mobile-v10.59.css?v=1059" />
 
   <style>
     html,body{margin:0;min-height:100%;background:#eaf2fb;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
@@ -56,27 +56,28 @@
   </noscript>
 
   <script>
-    window.VESCO_BUILD_VERSION = "V10.52";
-    window.VESCO_INDEX_VERSION = "index-v10.52";
+    window.VESCO_BUILD_VERSION = "V10.59";
+    window.VESCO_INDEX_VERSION = "index-v10.59";
     window.VESCO_API_URL = window.VESCO_API_URL || "https://script.google.com/macros/s/AKfycbwQ8-Rn-zZJQM0fLm9js3ErtJZefRnHP55E3M0r3Z_TIXS_skTioZ6p3yHqTLFYxPU9/exec";
     window.VESCO_API_FLEX_URL = window.VESCO_API_FLEX_URL || "https://script.google.com/macros/s/AKfycbzDp2qs2S_MxDc_3afY1TurNKYEwfYKkk2cc4IliNxLiVaJuSKYyRqofOUMnhdFBjwNwg/exec";
     window.VESCO_EASYPANEL_URL = window.VESCO_EASYPANEL_URL || "https://atendente-vesco-worker.2cwhzy.easypanel.host";
     // Não recomendo deixar secret no frontend público. Se quiser que o botão Atualizar force /sync, preencha abaixo.
     window.VESCO_EASYPANEL_SECRET = window.VESCO_EASYPANEL_SECRET || "";
     window.VESCO_FIREBASE_ROOT = window.VESCO_FIREBASE_ROOT || "vesco_operacao_v2";
-    window.VESCO_AUTO_GEOCODE = true;
     window.VESCO_ROUTE_LINE = false;
     window.VESCO_TABLE_LIMIT = 100;
-    window.VESCO_IS_MOBILE_BOOT = window.matchMedia && window.matchMedia("(max-width: 820px), (max-height: 600px) and (max-width: 950px)").matches;
-    window.VESCO_PAGE_SIZE = window.VESCO_IS_MOBILE_BOOT ? 10 : 24;
-    window.VESCO_MAP_PAGE_SIZE = window.VESCO_IS_MOBILE_BOOT ? 8 : 20;
-    window.VESCO_MAP_LIMIT = 120;
+    window.VESCO_IS_MOBILE_BOOT = window.matchMedia && window.matchMedia("(max-width: 899px)").matches;
+    // No celular, coordenadas são geradas sob demanda ao abrir o mapa para não congelar a navegação.
+    window.VESCO_AUTO_GEOCODE = !window.VESCO_IS_MOBILE_BOOT;
+    window.VESCO_PAGE_SIZE = 0; // calculado em tempo real pelo módulo, inclusive após redimensionar/DevTools
+    window.VESCO_MAP_PAGE_SIZE = 0; // calculado em tempo real pelo módulo
+    window.VESCO_MAP_LIMIT = window.VESCO_IS_MOBILE_BOOT ? 40 : 120;
     window.VESCO_PLANILHA_FIRST = true;
     window.VESCO_PLANILHA_INSTANT = true;
-    window.VESCO_PLANILHA_POLL_MS = 8000;
-    window.VESCO_GEO_CONCURRENCY = 3;
-    window.VESCO_GEO_BATCH_LIMIT = 36;
-    window.VESCO_PATCH_CACHE_MS = 30000;
+    window.VESCO_PLANILHA_POLL_MS = window.VESCO_IS_MOBILE_BOOT ? 60000 : 8000;
+    window.VESCO_GEO_CONCURRENCY = window.VESCO_IS_MOBILE_BOOT ? 1 : 3;
+    window.VESCO_GEO_BATCH_LIMIT = window.VESCO_IS_MOBILE_BOOT ? 8 : 36;
+    window.VESCO_PATCH_CACHE_MS = window.VESCO_IS_MOBILE_BOOT ? 60000 : 30000;
     window.VESCO_PLANILHA_WEB_APP_URL = window.VESCO_PLANILHA_WEB_APP_URL || "";
 
 
@@ -94,12 +95,12 @@
     });
   </script>
 
-  <script src="firebase-config.js?v=1052"></script>
+  <script src="firebase-config.js?v=1059"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-  <script src="modulo.vesco-v8-operacional.js?v=1052"></script>
-  <script src="vesco-mobile-v10.52.js?v=1052"></script>
-  <script src="vesco-firebase-realtime.js?v=1052"></script>
-  <script src="painel_motorista_link_v22.js?v=1052"></script>
+  <script src="modulo.vesco-v8-operacional.js?v=1059"></script>
+  <script src="vesco-mobile-v10.59.js?v=1059"></script>
+  <script src="vesco-firebase-realtime.js?v=1059"></script>
+  <script src="painel_motorista_link_v22.js?v=1059"></script>
 
   <script>
     (function(){
@@ -113,9 +114,9 @@
       }
 
       function checkReady(){
-        if (window.VescoV8 && window.VescoV8.__v1052) {
+        if (window.VescoV8 && window.VescoV8.__v1059) {
           hideBoot();
-          console.log("VESCO index V10.52 carregado com sucesso.");
+          console.log("VESCO index V10.59 carregado com sucesso.");
           return true;
         }
         return false;
@@ -131,7 +132,7 @@
               var box = document.getElementById("vescoBootError");
               if (box) {
                 box.style.display = "block";
-                box.textContent = "O módulo V10.52 não iniciou. Confirme se modulo.vesco-v8-operacional.js e vesco-mobile-v10.52.js estão publicados.";
+                box.textContent = "O módulo V10.59 não iniciou. Confirme se modulo.vesco-v8-operacional.js e vesco-mobile-v10.59.js estão publicados.";
               }
             }
           }

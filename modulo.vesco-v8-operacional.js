@@ -1,4 +1,5 @@
-// modulo.vesco-v8-operacional.js — V10.52 MOBILE COMPLETO + NAVEGAÇÃO INSTANTÂNEA
+// modulo.vesco-v8-operacional.js — V10.59 MENU MOBILE CORRIGIDO / PEDIDOS EMPILHADOS
+// Base operacional V10.55 preservada. Alterações somente para navegação mobile e restauração do menu desktop.
 // Base V10.51 preservada, com camada mobile completa, paginação adaptativa e navegação touch.
 
 (function(){
@@ -61,17 +62,47 @@
     badgeCache: null,
     derivedCache: null,
     derivedCacheKey: "",
+    masterOrderIndex: null,
+    masterOrderIndexRevision: -1,
+    routeReadyCache: null,
+    routeReadyCacheKey: "",
     lastRenderedTab: "",
     userNavigatingUntil: 0,
     renderToken: 0
   };
 
-  // V10.35 — Performance / fluidez
-  const VESCO_PERF_VERSION = "V10.52-MOBILE-COMPLETO-TOUCH";
+  // V10.56 — paginação adaptativa preservada; layout desktop não é sobrescrito pela camada mobile.
+  const VESCO_PERF_VERSION = "V10.59-MOBILE-MENU-PEDIDOS-EMPILHADOS";
+  const VESCO_IS_MOBILE_RUNTIME = !!(window.matchMedia && window.matchMedia("(max-width: 899px), (max-height: 640px) and (max-width: 1100px)").matches);
   const VESCO_TABLE_LIMIT = Number(window.VESCO_TABLE_LIMIT || 120);
-  const VESCO_PAGE_SIZE = Math.max(20, Math.min(70, Number(window.VESCO_PAGE_SIZE || 24)));
-  const VESCO_MAP_PAGE_SIZE = Math.max(18, Math.min(50, Number(window.VESCO_MAP_PAGE_SIZE || 20)));
-  const VESCO_MAP_LIMIT = Number(window.VESCO_MAP_LIMIT || 120);
+  function viewportWidth(){
+    const values=[
+      Number(document.documentElement?.clientWidth||0),
+      Number(window.innerWidth||0),
+      Number(window.visualViewport?.width||0)
+    ].filter(v=>Number.isFinite(v)&&v>0);
+    return Math.max(240, values.length ? Math.min(...values) : 1280);
+  }
+  function responsivePageSize(){
+    const w=viewportWidth();
+    // V10.59: no mobile os pedidos ficam empilhados em uma lista contínua.
+    // Até 12 cards são exibidos um abaixo do outro antes da paginação.
+    if(w<=899) return 12;
+    const configured=Number(window.VESCO_PAGE_SIZE);
+    if(Number.isFinite(configured)&&configured>0) return Math.max(1,Math.min(70,configured));
+    if(w<1200) return 18;
+    return 24;
+  }
+  function responsiveMapPageSize(){
+    const w=viewportWidth();
+    // Telas com mapa continuam leves, mas sem mostrar somente um pedido.
+    if(w<=899) return 8;
+    const configured=Number(window.VESCO_MAP_PAGE_SIZE);
+    if(Number.isFinite(configured)&&configured>0) return Math.max(1,Math.min(50,configured));
+    if(w<1200) return 14;
+    return 20;
+  }
+  const VESCO_MAP_LIMIT = Math.max(10,Math.min(VESCO_IS_MOBILE_RUNTIME?50:160,Number(window.VESCO_MAP_LIMIT || (VESCO_IS_MOBILE_RUNTIME?50:120))));
   const VESCO_AUTO_GEOCODE = window.VESCO_AUTO_GEOCODE === true;
   const VESCO_ROUTE_LINE = window.VESCO_ROUTE_LINE === true;
   const VESCO_GEO_CONCURRENCY = Math.max(1, Math.min(5, Number(window.VESCO_GEO_CONCURRENCY || 3)));
@@ -96,6 +127,10 @@
     state.badgeCache = null;
     state.derivedCache = null;
     state.derivedCacheKey = "";
+    state.masterOrderIndex = null;
+    state.masterOrderIndexRevision = -1;
+    state.routeReadyCache = null;
+    state.routeReadyCacheKey = "";
   }
   function derivedLists(){
     const key=[state.perfRevision,state.date,state.month,state.orders.length,state.flex.length,state.rotas.length].join("|");
@@ -115,9 +150,10 @@
     state.derivedCacheKey=key;
     return d;
   }
-  function paginationFor(list, tab=state.tab, pageSize=VESCO_PAGE_SIZE){
+  function paginationFor(list, tab=state.tab, pageSize=null){
     const rows=Array.isArray(list)?list:[];
-    const size=Math.max(1,Number(pageSize)||VESCO_PAGE_SIZE);
+    const resolved=pageSize===null||pageSize===undefined?responsivePageSize():Number(pageSize);
+    const size=Math.max(1,Number(resolved)||responsivePageSize());
     const totalPages=Math.max(1,Math.ceil(rows.length/size));
     let page=Math.max(1,Number(state.pageByTab?.[tab]||1));
     if(page>totalPages) page=totalPages;
@@ -129,19 +165,95 @@
   function pagerHtml(p){
     if(!p || p.totalPages<=1) return "";
     const from=p.total? p.start+1 : 0;
-    return `<div class="v1051-pager" role="navigation" aria-label="Paginação">
-      <button class="v8-btn secondary" ${p.page<=1?"disabled":""} onclick="VescoV8.setListPage('${esc(p.tab)}',${p.page-1})">Anterior</button>
-      <span><b>${from}-${p.end}</b> de <b>${p.total}</b> • página ${p.page}/${p.totalPages}</span>
-      <button class="v8-btn secondary" ${p.page>=p.totalPages?"disabled":""} onclick="VescoV8.setListPage('${esc(p.tab)}',${p.page+1})">Próxima</button>
+    const tab=esc(p.tab);
+    return `<div class="v1051-pager v1057-pager" role="navigation" aria-label="Paginação de pedidos" data-vpage-current="${p.page}" data-vpage-total="${p.totalPages}">
+      <button type="button" class="v8-btn secondary v1057-page-btn" data-vpage-tab="${tab}" data-vpage="${p.page-1}" aria-label="Página anterior" ${p.page<=1?"disabled":""}><i class="fas fa-chevron-left" aria-hidden="true"></i><span class="v1057-page-label">Anterior</span></button>
+      <span class="v1057-page-status"><b>${from}-${p.end}</b> de <b>${p.total}</b><small>Página ${p.page} de ${p.totalPages}</small></span>
+      <button type="button" class="v8-btn secondary v1057-page-btn" data-vpage-tab="${tab}" data-vpage="${p.page+1}" aria-label="Próxima página" ${p.page>=p.totalPages?"disabled":""}><span class="v1057-page-label">Próxima</span><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
     </div>`;
+  }
+  function isMobilePageRuntime(){
+    return !!(window.matchMedia && window.matchMedia("(max-width: 899px), (max-width: 1100px) and (pointer: coarse)").matches);
+  }
+  function getPageScroller(){
+    const main=document.getElementById("v8Main");
+    if(isMobilePageRuntime() && main) return main;
+    return document.scrollingElement || document.documentElement || document.body;
+  }
+  function scrollToCurrentList(){
+    const target=document.querySelector("#v8Content .v1057-pager") || document.querySelector("#v8Content .v8-card .v8-table-wrap") || document.getElementById("v8Content");
+    if(!target) return;
+    const scroller=getPageScroller();
+    if(scroller && scroller.id==="v8Main"){
+      const topbar=document.getElementById("v8Topbar");
+      const relativeTop=target.getBoundingClientRect().top-scroller.getBoundingClientRect().top+scroller.scrollTop-(topbar?.offsetHeight||0)-8;
+      try{scroller.scrollTo({top:Math.max(0,relativeTop),behavior:"auto"});}catch(_e){scroller.scrollTop=Math.max(0,relativeTop);}
+      return;
+    }
+    const top=Math.max(0,Math.round(target.getBoundingClientRect().top + (window.scrollY||0) - 76));
+    try{window.scrollTo({top,behavior:"auto"});}catch(_e){window.scrollTo(0,top);}
   }
   function setListPage(tab,page){
     const t=txt(tab)||state.tab;
-    state.pageByTab[t]=Math.max(1,Number(page)||1);
-    state.userNavigatingUntil=Date.now()+300;
-    const scroller=document.querySelector("#v8Main") || document.scrollingElement;
-    if(scroller) scroller.scrollTop=0;
-    scheduleRender(true);
+    const next=Math.max(1,Number(page)||1);
+    if(state.pageByTab[t]===next && state.tab===t) return false;
+    state.pageByTab[t]=next;
+    state.userNavigatingUntil=Date.now()+180;
+    if(isMobilePageRuntime()){
+      render();
+      requestAnimationFrame(scrollToCurrentList);
+      setTimeout(scrollToCurrentList,60);
+    }else{
+      const scroller=document.scrollingElement || document.documentElement || document.body;
+      if(scroller) scroller.scrollTop=0;
+      scheduleRender(true);
+    }
+    return true;
+  }
+  let v1057LastPagerPointerAt=0;
+  function bindPagerNavigation(){
+    if(document.documentElement.dataset.v1057PagerBound==="1") return;
+    document.documentElement.dataset.v1057PagerBound="1";
+    const activate=ev=>{
+      const btn=ev.target?.closest?.(".v1057-page-btn[data-vpage]");
+      if(!btn || btn.disabled) return;
+      if(ev.type==="click" && Date.now()-v1057LastPagerPointerAt<650){
+        ev.preventDefault(); ev.stopPropagation();
+        return;
+      }
+      if(ev.type==="pointerup") v1057LastPagerPointerAt=Date.now();
+      ev.preventDefault();
+      ev.stopPropagation();
+      setListPage(btn.dataset.vpageTab||state.tab,Number(btn.dataset.vpage));
+    };
+    document.addEventListener("pointerup",activate,true);
+    document.addEventListener("click",activate,true);
+    document.addEventListener("keydown",ev=>{
+      const btn=ev.target?.closest?.(".v1057-page-btn[data-vpage]");
+      if(!btn || btn.disabled || (ev.key!=="Enter" && ev.key!==" ")) return;
+      ev.preventDefault(); ev.stopPropagation();
+      setListPage(btn.dataset.vpageTab||state.tab,Number(btn.dataset.vpage));
+    },true);
+  }
+  let v1058ResponsiveSize=responsivePageSize();
+  let v1058ResizeTimer=null;
+  function bindResponsivePaginationResize(){
+    if(document.documentElement.dataset.v1058ResponsivePagerBound==="1") return;
+    document.documentElement.dataset.v1058ResponsivePagerBound="1";
+    const onResize=()=>{
+      clearTimeout(v1058ResizeTimer);
+      v1058ResizeTimer=setTimeout(()=>{
+        const next=responsivePageSize();
+        if(next===v1058ResponsiveSize) return;
+        v1058ResponsiveSize=next;
+        state.pageByTab={};
+        if(state.loaded) render();
+        requestAnimationFrame(()=>{ const scroller=getPageScroller(); if(scroller) scroller.scrollTop=0; });
+      },90);
+    };
+    window.addEventListener("resize",onResize,{passive:true});
+    window.addEventListener("orientationchange",onResize,{passive:true});
+    window.visualViewport?.addEventListener("resize",onResize,{passive:true});
   }
   function resetCurrentPage(){ state.pageByTab[state.tab]=1; }
   function tabMeta(tab){
@@ -158,10 +270,20 @@
     };
     return all[tab]||all.dashboard;
   }
+  let v1053NavWatchdog=null;
   function markNavigationBusy(on){
     document.body.classList.toggle("v1051-nav-busy",!!on);
     const c=document.getElementById("v8Content");
     if(c) c.setAttribute("aria-busy",on?"true":"false");
+    clearTimeout(v1053NavWatchdog);
+    if(on){
+      // Em aparelhos móveis uma exceção ou render cancelado não pode deixar a tela sem clique.
+      v1053NavWatchdog=setTimeout(()=>{
+        document.body.classList.remove("v1051-nav-busy");
+        const content=document.getElementById("v8Content");
+        if(content) content.setAttribute("aria-busy","false");
+      },1200);
+    }
   }
   function defer(fn, ms=30){
     setTimeout(()=>{ try{ fn(); }catch(e){ console.warn("V10.35 defer falhou", e); } }, ms);
@@ -1485,6 +1607,12 @@ function coords(o){
       if(!snap) return false;
       const rows = extractArray(snap,["pedidos","orders","rows","data"]);
       const h = v1038PlanilhaHash(rows);
+      // Evita reaplicar, poucos segundos após o boot, o mesmo snapshot que já está na memória.
+      const currentHash = state.loaded && state.orders?.length ? v1038PlanilhaHash(state.orders) : "";
+      if(h && (h===v1038PlanilhaLastHash || h===currentHash)){
+        v1038PlanilhaLastHash=h;
+        return false;
+      }
       const mustApply = !state.loaded || !state.orders.length || h !== v1038PlanilhaLastHash;
       if(!mustApply) return false;
       v1038PlanilhaLastHash = h;
@@ -1509,15 +1637,22 @@ function coords(o){
 
   function startPlanilhaInstantaneaPolling(){
     if(v1038PlanilhaPollTimer) return;
-    const normalMs=Math.max(6000,Number(window.VESCO_PLANILHA_POLL_MS||8000));
-    const tick=()=>{
-      if(document.hidden || state.loading) return;
-      refreshPlanilhaInstantanea(true);
-      const next=(window.__vescoFastPollUntil && Date.now()<window.__vescoFastPollUntil)?2200:normalMs;
-      v1038PlanilhaPollTimer=setTimeout(tick,next);
+    const mobileRuntime=window.matchMedia && window.matchMedia("(max-width: 899px), (max-height: 640px) and (max-width: 1100px)").matches;
+    const configured=Number(window.VESCO_PLANILHA_POLL_MS || (mobileRuntime?60000:8000));
+    const normalMs=mobileRuntime?Math.max(45000,configured):Math.max(6000,configured);
+    const fastMs=mobileRuntime?8000:2200;
+    const scheduleNext=(ms)=>{ clearTimeout(v1038PlanilhaPollTimer); v1038PlanilhaPollTimer=setTimeout(tick,ms); };
+    const tick=async()=>{
+      const navigating=Date.now()<Number(state.userNavigatingUntil||0) || document.body.classList.contains("v1051-nav-busy");
+      if(document.hidden || state.loading || navigating){ scheduleNext(normalMs); return; }
+      try{ await refreshPlanilhaInstantanea(true); }
+      finally{
+        const next=(window.__vescoFastPollUntil && Date.now()<window.__vescoFastPollUntil)?fastMs:normalMs;
+        scheduleNext(next);
+      }
     };
-    v1038PlanilhaPollTimer=setTimeout(tick,normalMs);
-    console.log("V10.51: polling adaptativo ativo — normal",normalMs,"ms; rápido 2200 ms após Atualizar.");
+    scheduleNext(normalMs);
+    console.log("V10.56: polling adaptativo ativo —",mobileRuntime?"mobile leve":"desktop","normal",normalMs,"ms; rápido",fastMs,"ms.");
   }
 
   async function refreshFromEasyPanel(forceSync=false){
@@ -1752,13 +1887,20 @@ async function loadData(force=false){
           const snapEasy=await loadEasyPanelSnapshot().catch(()=>null);
           if(snapEasy) await applySnapshot(snapEasy,"easypanel_force");
         }
-        [1200,3200,7000].forEach(ms=>setTimeout(()=>refreshPlanilhaInstantanea(true),ms));
+        const mobileRuntime=window.matchMedia && window.matchMedia("(max-width: 899px), (max-height: 640px) and (max-width: 1100px)").matches;
+        const followUps=mobileRuntime?[6000,15000]:[1200,3200,7000];
+        followUps.forEach(ms=>setTimeout(()=>refreshPlanilhaInstantanea(true),ms));
         return true;
       }
 
       let quickLoaded=false;
       const snapPlanilha=await loadPlanilhaBridgeSnapshot().catch(()=>null);
-      if(snapPlanilha) quickLoaded=await applySnapshot(snapPlanilha,"planilha_bridge");
+      if(snapPlanilha){
+        quickLoaded=await applySnapshot(snapPlanilha,"planilha_bridge");
+        if(quickLoaded){
+          v1038PlanilhaLastHash=v1038PlanilhaHash(extractArray(snapPlanilha,["pedidos","orders","rows","data"]));
+        }
+      }
 
       if(!quickLoaded){
         const snapEasy=await loadEasyPanelSnapshot().catch(()=>null);
@@ -1942,13 +2084,26 @@ function logisticaList(){ return removeGhostFirebaseRows(dedup(state.orders)).fi
     return dedup((state.rotaFlexExtras||[]).map(o=>normalizeOrder(o,"flex")).map(o=>({...o,__rotaSource:"Flex"})));
   }
 
+  function masterOrderIndex(){
+    if(state.masterOrderIndex && state.masterOrderIndexRevision===state.perfRevision) return state.masterOrderIndex;
+    const index=new Map();
+    (state.orders||[]).forEach(m=>{
+      orderIdentifierSet(m).forEach(k=>{
+        const safe=firebaseSafeId(k);
+        if(safe && !index.has(safe)) index.set(safe,m);
+      });
+    });
+    state.masterOrderIndex=index;
+    state.masterOrderIndexRevision=state.perfRevision;
+    return index;
+  }
   function masterOrderFor(o){
-    const wanted=orderIdentifierSet(o).map(firebaseSafeId);
-    if(!wanted.length) return null;
-    return (state.orders||[]).find(m=>{
-      const vals=orderIdentifierSet(m).map(firebaseSafeId);
-      return vals.some(v=>wanted.includes(v));
-    }) || null;
+    const index=masterOrderIndex();
+    for(const k of orderIdentifierSet(o)){
+      const found=index.get(firebaseSafeId(k));
+      if(found) return found;
+    }
+    return null;
   }
 
   function enrichSeparatedWithMaster(o){
@@ -1987,12 +2142,19 @@ function logisticaList(){ return removeGhostFirebaseRows(dedup(state.orders)).fi
     return normalizeOrder(merged,"erp");
   }
   function routeReadyList(){
+    const extras=routeFlexExtras();
+    const routeSignature=(state.rotas||[]).map(r=>`${routeId(r)}:${routePedidosCount(r)}`).join("|");
+    const cacheKey=[state.perfRevision,state.date,state.orders.length,state.flex.length,extras.length,routeSignature].join("|");
+    if(state.routeReadyCache && state.routeReadyCacheKey===cacheKey) return state.routeReadyCache;
     // V10.43: pedido que já entrou em alguma rota ativa não aparece de novo para gerar rota.
     const assigned=routeAssignedKeySet();
     const notAssigned=o=>!orderIdentifierSet(o).some(k=>assigned.has(firebaseSafeId(k)));
-    const erp=removeGhostFirebaseRows(prontoList()).filter(notAssigned).map(o=>({...o,__rotaSource:"ERP"}));
-    const flex=routeFlexExtras().filter(notAssigned);
-    return dedup(erp.concat(flex));
+    const pronto=derivedLists().pronto;
+    const erp=removeGhostFirebaseRows(pronto).filter(notAssigned).map(o=>({...o,__rotaSource:"ERP"}));
+    const flex=extras.filter(notAssigned);
+    state.routeReadyCache=dedup(erp.concat(flex));
+    state.routeReadyCacheKey=cacheKey;
+    return state.routeReadyCache;
   }
   function findFlexForRoute(code){
     const clean=txt(code).replace(/^#/,"").trim();
@@ -2090,9 +2252,15 @@ function layout(){
     document.body.appendChild(overlay);
     document.body.appendChild(mobile);
 
+    const desktopMenuNow=!(window.matchMedia && window.matchMedia("(max-width: 899px), (max-width: 1100px) and (pointer: coarse)").matches);
+    if(desktopMenuNow && localStorage.getItem("vesco:v10.56:desktopMenuRestored")!=="1"){
+      state.sidebarCollapsed=false;
+      localStorage.setItem("vesco:v8:sidebarCollapsed","0");
+      localStorage.setItem("vesco:v10.56:desktopMenuRestored","1");
+    }
     document.body.classList.toggle("v8-sidebar-collapsed", !!state.sidebarCollapsed);
 
-    function isMobile(){ return window.matchMedia && window.matchMedia("(max-width: 760px)").matches; }
+    function isMobile(){ return window.matchMedia && window.matchMedia("(max-width: 899px), (max-width: 1100px) and (pointer: coarse)").matches; }
     function closeMobileMenu(){ document.body.classList.remove("v8-mobile-menu-open"); }
     function openMobileMenu(){ document.body.classList.add("v8-mobile-menu-open"); }
 
@@ -2213,7 +2381,7 @@ function layout(){
   function tablePage({title,sub,kpi,list,columns,empty}){
     setPage(title,sub);
     const fullList = Array.isArray(list) ? list : [];
-    const page = paginationFor(fullList,state.tab,VESCO_PAGE_SIZE);
+    const page = paginationFor(fullList,state.tab);
     const visibleList = page.items;
     document.getElementById("v8Content").innerHTML=`
       ${kpis(kpi)}
@@ -2459,7 +2627,7 @@ function layout(){
     const allList=searchFilter(dl.separacao);
     const pendencias=searchFilter(dl.pendencias);
     const list=dedup(allList.concat(pendencias));
-    const page=paginationFor(list,"separacao",VESCO_PAGE_SIZE);
+    const page=paginationFor(list,"separacao");
     const visibleList=page.items;
     setPage("Separação","Fila ativa de pedidos ERP ainda não separados.");
     const totalValue=list.reduce((s,o)=>s+value(o),0);
@@ -3578,11 +3746,11 @@ function renderDriverLiveMap(forceFit=false){
   function renderProntoEnvio(){
     const addedFlex=routeFlexExtras();
     const list=searchFilter(routeReadyList());
-    const page=paginationFor(list,"saiu",VESCO_PAGE_SIZE);
+    const page=paginationFor(list,"saiu");
     const visibleList=page.items;
     const erpCount=list.filter(o=>txt(o.__rotaSource)==="ERP").length;
     const flexCount=addedFlex.length;
-    const sepSource=prontoList();
+    const sepSource=derivedLists().pronto;
     setPage("Pronto para Envio","Pedidos separados disponíveis para montar rota.");
     const content=document.getElementById("v8Content");
     content.innerHTML=`
@@ -3685,14 +3853,18 @@ function renderDriverLiveMap(forceFit=false){
       state.routeSelection[firebaseSafeId(ch.value)]=!!ch.checked;
     }));
     document.getElementById("v8FlexRotaBusca")?.addEventListener("keydown",e=>{ if(e.key==="Enter") addFlexToRouteByCode(); });
-    renderMap("logistica", true, list);
+    scheduleMapAfterIdle("logistica",list,true);
 
     // V10.32: não liga acompanhamento ao vivo se não houver rota criada nesta data.
     // Isso evita renderizar histórico antigo e melhora a fluidez.
     const dayRoutes=rotasCriadasDaData();
-    if(dayRoutes.length){
+    if(dayRoutes.length && !VESCO_IS_MOBILE_RUNTIME){
       startMotoristaTrackingPolling();
       setTimeout(()=>renderDriverLiveMap(true),250);
+    }else if(dayRoutes.length){
+      stopMotoristaTrackingPolling();
+      const stats=document.getElementById("v112-driver-map-stats");
+      if(stats) stats.innerHTML='<span class="warn">Toque em Ajustar mapa para acompanhar ao vivo.</span>';
     }else{
       stopMotoristaTrackingPolling();
       if(document.getElementById("v106MotoristasAoVivo")){
@@ -4142,9 +4314,26 @@ function renderDriverLiveMap(forceFit=false){
     });
   }
 
+  function scheduleMapAfterIdle(type,listOverride=null,forceFit=true){
+    const expectedTab=state.tab;
+    const run=()=>{
+      if(document.hidden || state.tab!==expectedTab) return;
+      try{ renderMap(type,forceFit,listOverride); }
+      catch(e){ console.warn("V10.56: mapa não bloqueou a tela",e.message||e); }
+    };
+    if(VESCO_IS_MOBILE_RUNTIME){
+      // No celular o mapa é carregado pelo botão Ajustar/Mapa. Isso evita Leaflet e geocode
+      // competindo com o primeiro toque da troca de tela.
+      const stats=document.getElementById(`v8-map-${type}-stats`);
+      if(stats) stats.innerHTML='<span class="ok">Mapa pronto para abrir</span><span>Toque em Ajustar ou no botão Mapa de um pedido.</span>';
+      return;
+    }
+    run();
+  }
+
   function renderLogistica(){
     const list=searchFilter(derivedLists().logistica);
-    const page=paginationFor(list,"logistica",VESCO_MAP_PAGE_SIZE);
+    const page=paginationFor(list,"logistica",responsiveMapPageSize());
     const tableList=page.items;
     const plotted=list.filter(coords);
     setPage("Logística ERP","Apenas ERP não entregue, com endereço e fora de retirada/Flex.");
@@ -4169,7 +4358,7 @@ function renderDriverLiveMap(forceFit=false){
           <div id="v8-map-logistica" class="v8-map"></div><div id="v8-map-logistica-stats" class="v8-map-stats"></div>
         </div>
       </div>`;
-    renderMap("logistica",true);
+    scheduleMapAfterIdle("logistica",list,true);
   }
 
   
@@ -4229,7 +4418,7 @@ function renderDriverLiveMap(forceFit=false){
 
   function renderFlex(){
     const list=searchFilter(derivedLists().flex);
-    const page=paginationFor(list,"flex",VESCO_MAP_PAGE_SIZE);
+    const page=paginationFor(list,"flex",responsiveMapPageSize());
     const tableList=page.items;
     const plotted=list.filter(coords);
     const month=state.month || state.date.slice(0,7);
@@ -4246,7 +4435,7 @@ function renderDriverLiveMap(forceFit=false){
       ])+
       `<div class="v8-flex-layout">${renderFlexMonthBars()}${renderFlexContas(list)}</div>`+
       `<div class="v8-grid"><div class="v8-card"><div class="v8-card-head"><div><h3>Pedidos Flex</h3><small>${list.length} pedido(s)${list.length?` • exibindo ${page.start+1}-${page.end}`:""}</small></div><div class="v8-card-actions"><button class="v8-btn secondary" onclick="VescoV8.openFlexMonth('${esc(month)}')">Recarregar mês</button></div></div>${pagerHtml(page)}<div class="v8-table-wrap"><table class="v8-table"><thead><tr><th>Pedido/E-com</th><th>Destinatário</th><th>Produtos</th><th>Data</th><th>Valor</th><th>Conta</th><th>Status</th><th>Ação</th></tr></thead><tbody>${tableList.length?tableList.map(o=>`<tr><td>${orderCell(o)}</td><td>${clientCell(o)}</td><td>${produtoHtml(o)}</td><td><span class="v8-chip gray">${br(dueDate(o))}</span></td><td>${money(value(o))}</td><td><span class="v8-chip blue">${esc(pick(o,["conta","loja","store_name"])||"Flex")}</span></td><td><span class="v8-chip orange">Flex pendente</span></td><td><button class="v8-btn orange" onclick="VescoV8.openMapForOrder('flex','${esc(number(o)||orderKey(o)||ecom(o))}')">${coords(o)?"Mapa":"Maps"}</button></td></tr>`).join(""):`<tr><td colspan="8" class="v8-empty"><b>Nenhum Flex neste mês.</b></td></tr>`}</tbody></table></div>${pagerHtml(page)}</div><div class="v8-card v8-map-card"><div class="v8-map-toolbar"><div><h3>Radar Flex</h3><small>Localização progressiva com cache</small></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="v8-btn secondary" onclick="VescoV8.gerarPingsMapa('flex')">Localizar endereços</button><button class="v8-btn secondary" onclick="VescoV8.renderMap('flex', true)">Ajustar</button></div></div><div id="v8-map-flex" class="v8-map"></div><div id="v8-map-flex-stats" class="v8-map-stats"></div></div></div>`;
-    renderMap("flex",true);
+    scheduleMapAfterIdle("flex",list,true);
   }
   function showLegacy(tab){
     if(tab==="separacao") return renderSeparacao();
@@ -4543,7 +4732,7 @@ function renderDriverLiveMap(forceFit=false){
 
   function renderSeparados(){
     const list=searchFilter(derivedLists().separados);
-    const page=paginationFor(list,"separados",VESCO_PAGE_SIZE);
+    const page=paginationFor(list,"separados");
     const iniciados=list.filter(o=>txt(sepStartTime(o))).length;
     const finalizados=list.filter(o=>txt(sepEndTime(o)) || txt(sepDate(o))).length;
     const comTempo=list.filter(o=>sepTempo(o)!=="—").length;
@@ -4619,20 +4808,35 @@ function renderDriverLiveMap(forceFit=false){
   }
 
   let v1050RenderScheduled=false;
+  let v1053RenderForce=false;
   function scheduleRender(force=false){
-    if(v1050RenderScheduled && !force) return;
+    v1053RenderForce=v1053RenderForce||!!force;
+    if(v1050RenderScheduled) return;
     v1050RenderScheduled=true;
-    const token=++state.renderToken;
     const run=()=>{
+      const forceNow=v1053RenderForce;
       const wait=Math.max(0,Number(state.userNavigatingUntil||0)-Date.now());
-      if(wait>0 && !force){ setTimeout(run,wait+20); return; }
+      if(wait>0 && !forceNow){ setTimeout(run,Math.min(wait+16,220)); return; }
       requestAnimationFrame(()=>{
-        if(token!==state.renderToken && !force){ v1050RenderScheduled=false; return; }
-        v1050RenderScheduled=false;
-        const scroller=document.querySelector("#v8Main") || document.scrollingElement;
+        const scroller=getPageScroller();
         const top=scroller?scroller.scrollTop:0;
-        try{ render(); }finally{
-          if(scroller && top>0 && !force) requestAnimationFrame(()=>{ try{scroller.scrollTop=top;}catch(e){} });
+        v1053RenderForce=false;
+        try{ render(); }
+        catch(e){ console.error("V10.58: fila de render capturou erro",e); }
+        finally{
+          v1050RenderScheduled=false;
+          markNavigationBusy(false);
+          if(state.__resetMobileScrollAfterRender){
+            state.__resetMobileScrollAfterRender=false;
+            requestAnimationFrame(()=>{
+              resetMobileDocumentScroll();
+              setTimeout(resetMobileDocumentScroll,80);
+            });
+          }else if(scroller && top>0 && !forceNow){
+            requestAnimationFrame(()=>{ try{scroller.scrollTop=top;}catch(e){} });
+          }
+          // Se alguma atualização chegou durante o render, executa somente mais um quadro.
+          if(v1053RenderForce) scheduleRender(true);
         }
       });
     };
@@ -4663,7 +4867,7 @@ function renderDriverLiveMap(forceFit=false){
         requestAnimationFrame(()=>c.classList.add("v1051-page-ready"));
       }
     }catch(e){
-      console.error("V10.52: render seguro capturou erro.", e);
+      console.error("V10.58: render seguro capturou erro.", e);
       markNavigationBusy(false);
       showLoading(false);
       const el=document.getElementById("v8Content");
@@ -4897,11 +5101,28 @@ function renderMap(type,forceFit=false,listOverride=null){
     }
   }
   async function ensureData(){ if(!state.loaded) await loadData(true); }
+  function isMobileNavigationViewport(){
+    return !!(window.matchMedia && window.matchMedia("(max-width: 899px), (max-width: 1100px) and (pointer: coarse)").matches);
+  }
+  function resetMobileDocumentScroll(){
+    if(!isMobileNavigationViewport()) return false;
+    const scrolling=getPageScroller();
+    try{ if(scrolling) scrolling.scrollTop=0; }catch(_e){}
+    const content=document.getElementById("v8Content");
+    try{ if(content) content.scrollTop=0; }catch(_e){}
+    return true;
+  }
   function go(tab){
     const next=txt(tab)||"dashboard";
-    if(next===state.tab && state.lastRenderedTab===next) return true;
+    if(next===state.tab && state.lastRenderedTab===next){ markNavigationBusy(false); return true; }
+    const changed=next!==state.tab;
+    if(changed && isMobileNavigationViewport()){
+      state.pageByTab[next]=1;
+      state.__resetMobileScrollAfterRender=true;
+      resetMobileDocumentScroll();
+    }
     state.tab=next;
-    state.userNavigatingUntil=Date.now()+180;
+    state.userNavigatingUntil=Date.now()+90;
     const meta=tabMeta(next);
     setPage(meta[0],meta[1]);
     markNavigationBusy(true);
@@ -4909,7 +5130,8 @@ function renderMap(type,forceFit=false,listOverride=null){
       ensureData().then(()=>scheduleRender(true)).catch(()=>scheduleRender(true));
       return true;
     }
-    scheduleRender(true);
+    // Entrega o feedback visual do botão antes de montar a próxima tela.
+    requestAnimationFrame(()=>scheduleRender(true));
     return true;
   }
   function interceptOldClicks(){ document.addEventListener("click",e=>{ const btn=e.target.closest?.("[data-v7tab], [data-v8tab], #v7Sidebar button, .tab-nav button"); if(!btn)return; const label=norm(btn.dataset.v7tab||btn.dataset.v8tab||btn.textContent||""); const map={"dashboard":"dashboard","separacao":"separacao","separados hoje":"separados","separados":"separados","logistica":"logistica","logistica erp":"logistica","logística":"logistica","pronto para envio":"saiu","retiradas":"retiradas","tarefas frota":"tarefas","tarefas":"tarefas","frota":"tarefas","envios flex":"flex","flex":"flex","entregues":"entregues"}; const tab=map[label]||(label.includes("separados")?"separados":label.includes("log")?"logistica":label.includes("flex")?"flex":""); if(tab){e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); go(tab);}},true); }
@@ -4918,6 +5140,8 @@ function renderMap(type,forceFit=false,listOverride=null){
     state.tarefas=loadTarefas();
     autoCleanFlexStorageV87();
     layout();
+    bindPagerNavigation();
+    bindResponsivePaginationResize();
     interceptOldClicks();
     window.focusOrderOnMap=id=>focus("logistica",id);
     window.focusFlexOnMap=id=>focus("flex",id);
@@ -4929,9 +5153,11 @@ function renderMap(type,forceFit=false,listOverride=null){
     try{ await refreshFlexFromAppsScriptOnly(false); }catch(e){}
     render();
     startPlanilhaInstantaneaPolling();
-    setTimeout(()=>refreshPlanilhaInstantanea(true), 2500);
+    const mobileRuntime=window.matchMedia && window.matchMedia("(max-width: 899px), (max-height: 640px) and (max-width: 1100px)").matches;
+    // No mobile a carga inicial já trouxe o snapshot; não repete a mesma leitura segundos depois.
+    if(!mobileRuntime) setTimeout(()=>refreshPlanilhaInstantanea(true),2500);
   }
-  window.VescoV8={__v82:true,__v821:true,__v84:true,__v86:true,__v861:true,__v87:true,__v871:true,__v872:true,__v873:true,__v874:true,__v875:true,__v876:true,__v90:true,__v91:true,__v92:true,__v921:true,__v922:true,__v93:true,__v94:true,__v95:true,__v100:true,__v101:true,__v102:true,__v103:true,__v104:true,__v105:true,__v106:true,__v107:true,__v108:true,__v109:true,__v1010:true,__v1011:true,__v1012:true,__v1013:true,__v1014:true,__v1015:true,__v1016:true,__v1017:true,__v1018:true,__v1019:true,__v1020:true,__v1021:true,__v1022:true,__v1023:true,__v1024:true,__v1027:true,__v1028:true,__v1029:true,__v1030:true,__v1031:true,__v1032:true,__v1035:true,__v1036:true,__v1037:true,__v1038:true,__v1039:true,__v1040:true,__v1041:true,__v1042:true,__v1043:true,__v1048:true,__v1049:true,__v1050:true,__v1051:true,__v1052:true,state,init,go,scheduleRender,setListPage,
+  window.VescoV8={__v82:true,__v821:true,__v84:true,__v86:true,__v861:true,__v87:true,__v871:true,__v872:true,__v873:true,__v874:true,__v875:true,__v876:true,__v90:true,__v91:true,__v92:true,__v921:true,__v922:true,__v93:true,__v94:true,__v95:true,__v100:true,__v101:true,__v102:true,__v103:true,__v104:true,__v105:true,__v106:true,__v107:true,__v108:true,__v109:true,__v1010:true,__v1011:true,__v1012:true,__v1013:true,__v1014:true,__v1015:true,__v1016:true,__v1017:true,__v1018:true,__v1019:true,__v1020:true,__v1021:true,__v1022:true,__v1023:true,__v1024:true,__v1027:true,__v1028:true,__v1029:true,__v1030:true,__v1031:true,__v1032:true,__v1035:true,__v1036:true,__v1037:true,__v1038:true,__v1039:true,__v1040:true,__v1041:true,__v1042:true,__v1043:true,__v1048:true,__v1049:true,__v1050:true,__v1051:true,__v1052:true,__v1053:true,__v1054:true,__v1055:true,__v1056:true,__v1057:true,__v1058:true,__v1059:true,state,init,go,scheduleRender,setListPage,
     openFlexMonth:async(month)=>{state.month=month||state.month; const m=document.getElementById("v8Month"); if(m)m.value=state.month; await loadData(true); if(!flexList().length) await refreshFlexFromAppsScriptOnly(false); renderFlex();},
     saveFlexMonthNow:()=>{const saved=saveStoredFlex(flexList(),state.month); alert(saved.saved?`Mês armazenado: ${monthLabel(saved.month)} — ${saved.total} pedido(s).`:`Nada novo para armazenar em ${monthLabel(saved.month)}.`); renderFlex(); return saved;},
     refreshFlexOnly:async()=>{showLoading(true); await refreshFlexFromAppsScriptOnly(true); showLoading(false); renderFlex();},
@@ -4944,9 +5170,9 @@ function renderMap(type,forceFit=false,listOverride=null){
     runFlexGeocode,statusFlexGeocode,autoGeocodeMap,gerarPingsMapa,geocodeAddressViaFlexApi,cleanDisplayAddress,extractCep,address,openMapForOrder,openGoogleMapsForList,googleMapsDirectionsUrlFromOrders,
     renderTarefasFrota,registrarTarefaFrota,concluirTarefaFrota,removerTarefaFrota,tarefasFrotaList,
     sidebar:()=>{state.sidebarCollapsed=!state.sidebarCollapsed; document.body.classList.toggle("v8-sidebar-collapsed",state.sidebarCollapsed); localStorage.setItem("vesco:v8:sidebarCollapsed",state.sidebarCollapsed?"1":"0");},
-    today:async()=>{state.date=todayISO(); invalidatePerfCaches(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; state.pageByTab={}; await loadData(true); scheduleRender(true);},refresh:async()=>{await loadData(true); scheduleRender(true);},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,definirOperador,operadorAtual,produtosText,pagamentoText,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{linhaAoVivoMultipontos:true,statusRealtimeFix:true,retiradaRecebedorFix:true,rotaCalculadaFix:true,entreguesComprovantesFix:true,entreguesFirebaseDireto:true,leituraInteligenteV1019:true,realtimeInstantaneo:true,retiradaInteligente:true,firebaseLimpoV1020:true,semPedidoFantasma:true,realtimeLimitado:true,retiradaOlistV1021:true,rotasRecolhiveis:true,botaoMapaPedido:true,retiradaCodigoRD:true,separacaoSemRetirada:true,mapaSpV1023:true,geocodeSaoPaulo:true,semBotaoCorrigirEndereco:true,easyPanelFirstV1024:true,appsScriptEmergencia:true,atualizarViaEasyPanel:true,mobilePendenciaV1027:true,pendenciaFirebaseFirst:true,mobileCardsV1027:true,renderSeparadosFixV1027:true,separadosHojeDataRealV1027:true,mobileFullV1027:true,frontendMarketplaceCleanV1027:true,pendenciaNaoEntregaV1028:true,operadorRotaEntreguesV1028:true,planilhaStatusVetoV1029:true,rotasSomenteDataV1030:true,prontoIncluiSeparadosHojeV1031:true,flexApiFallbackV1031:true,enderecoLeituraAmpliadaV1031:true,prontoSomenteSeparadosDiaV1032:true,motoristasSomenteRotasDiaV1032:true,enderecoMestrePreservadoV1032:true,renderLeveV1032:true,performanceV1035:true,mapaLeveV1035:true,tabelasLimitadasV1035:true,planilhaFirstV1037:true,planilhaInstantV1038:true,pollingPlanilhaV1038:true,separacaoIncluiRetiradaV1038:true,workerFirstV1039:true,snapshotLiteFirstV1039:true,semAppsScriptAntigoV1039:true,workerPlanilhaV1040:true,planilhaPedidosEndpointV1040:true,entregaTransportadoraV1041:true,modoLeveV1042:true,hashEstavelV1042:true,pollingInteligenteV1042:true,firebaseRealtimeOffV1042:true,canceladosForaV1043:true,flexMantidoV1043:true,entregaRetiradaCorrigidaV1043:true,hotfixRetiradaFinalizadaV1044:true,semReferenceErrorV1044:true,hotfixIsDeliveredV1045:true,semBootErrorV1045:true,hotfixIsFlexIndicatorV1046:true,semBootErrorV1046:true,flexWorkerV1047:true,regraFlexPlanilhaV1047:true,mapaPingsV1047:true,erpValorNumeroFixV1048:true,pingsPersistentesV1048:true,flexAutorecoveryV1049:true,flexSempreCarregadoV1049:true,fluidezV1050:true,cacheGeocodePersistenteV1050:true,viaCepV1050:true,geocodeConcorrenteV1050:true,pollingAdaptativoV1050:true,navegacaoInstantaneaV1051:true,paginacaoLeveV1051:true,badgesCacheV1051:true,listasDerivadasCacheV1051:true,pollingSemConflitoV1051:true,mobileCompletoV1052:true,tabelasCardsAcessiveisV1052:true,filtrosMoveisV1052:true,mapaResponsivoV1052:true,modaisTelaCheiaV1052:true,paginacaoAdaptativaV1052:true,version:"V10.52-MOBILE-COMPLETO-TOUCH",date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFontePlanilha:false,apiWorkerFirst:EASYPANEL_URL,planilhaBridgeUrlOpcional:PLANILHA_BRIDGE_URL,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,flexDiagnostics:state.lastFlexDiagnostics||state.lastFlexPayload?.diagnostics||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
+    today:async()=>{state.date=todayISO(); invalidatePerfCaches(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; state.pageByTab={}; await loadData(true); scheduleRender(true);},refresh:async()=>{await loadData(true); scheduleRender(true);},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,definirOperador,operadorAtual,produtosText,pagamentoText,renderSeparacao,renderProntoEnvio,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{linhaAoVivoMultipontos:true,statusRealtimeFix:true,retiradaRecebedorFix:true,rotaCalculadaFix:true,entreguesComprovantesFix:true,entreguesFirebaseDireto:true,leituraInteligenteV1019:true,realtimeInstantaneo:true,retiradaInteligente:true,firebaseLimpoV1020:true,semPedidoFantasma:true,realtimeLimitado:true,retiradaOlistV1021:true,rotasRecolhiveis:true,botaoMapaPedido:true,retiradaCodigoRD:true,separacaoSemRetirada:true,mapaSpV1023:true,geocodeSaoPaulo:true,semBotaoCorrigirEndereco:true,easyPanelFirstV1024:true,appsScriptEmergencia:true,atualizarViaEasyPanel:true,mobilePendenciaV1027:true,pendenciaFirebaseFirst:true,mobileCardsV1027:true,renderSeparadosFixV1027:true,separadosHojeDataRealV1027:true,mobileFullV1027:true,frontendMarketplaceCleanV1027:true,pendenciaNaoEntregaV1028:true,operadorRotaEntreguesV1028:true,planilhaStatusVetoV1029:true,rotasSomenteDataV1030:true,prontoIncluiSeparadosHojeV1031:true,flexApiFallbackV1031:true,enderecoLeituraAmpliadaV1031:true,prontoSomenteSeparadosDiaV1032:true,motoristasSomenteRotasDiaV1032:true,enderecoMestrePreservadoV1032:true,renderLeveV1032:true,performanceV1035:true,mapaLeveV1035:true,tabelasLimitadasV1035:true,planilhaFirstV1037:true,planilhaInstantV1038:true,pollingPlanilhaV1038:true,separacaoIncluiRetiradaV1038:true,workerFirstV1039:true,snapshotLiteFirstV1039:true,semAppsScriptAntigoV1039:true,workerPlanilhaV1040:true,planilhaPedidosEndpointV1040:true,entregaTransportadoraV1041:true,modoLeveV1042:true,hashEstavelV1042:true,pollingInteligenteV1042:true,firebaseRealtimeOffV1042:true,canceladosForaV1043:true,flexMantidoV1043:true,entregaRetiradaCorrigidaV1043:true,hotfixRetiradaFinalizadaV1044:true,semReferenceErrorV1044:true,hotfixIsDeliveredV1045:true,semBootErrorV1045:true,hotfixIsFlexIndicatorV1046:true,semBootErrorV1046:true,flexWorkerV1047:true,regraFlexPlanilhaV1047:true,mapaPingsV1047:true,erpValorNumeroFixV1048:true,pingsPersistentesV1048:true,flexAutorecoveryV1049:true,flexSempreCarregadoV1049:true,fluidezV1050:true,cacheGeocodePersistenteV1050:true,viaCepV1050:true,geocodeConcorrenteV1050:true,pollingAdaptativoV1050:true,navegacaoInstantaneaV1051:true,paginacaoLeveV1051:true,badgesCacheV1051:true,listasDerivadasCacheV1051:true,pollingSemConflitoV1051:true,mobileCompletoV1052:true,tabelasCardsAcessiveisV1052:true,filtrosMoveisV1052:true,mapaResponsivoV1052:true,modaisTelaCheiaV1052:true,paginacaoAdaptativaV1052:true,mobileDestravadoV1053:true,scrollMobileSeguroV1054:true,responsivoUniversalV1055:true,layoutSemScrollTravadoV1055:true,paginacaoDinamicaV1055:true,mobileNavegavelV1056:true,desktopSidebarPreservadoV1056:true,scrollTopoAoNavegarV1056:true,paginacaoMobileDiretaV1057:true,pagerPointerV1057:true,pageSizeRealV1057:true,mobileScrollerV1058:true,paginacaoViewportRealV1058:true,resizeRecalculaPaginaV1058:true,menuMobileExpandidoV1059:true,pedidosEmpilhadosV1059:true,planilhaTodasContasV1054:true,navegacaoWatchdogV1053:true,pollingMobileLeveV1053:true,renderFilaUnicaV1053:true,version:"V10.59-MOBILE-MENU-PEDIDOS-EMPILHADOS",viewportWidth:viewportWidth(),effectivePageSize:responsivePageSize(),effectiveMapPageSize:responsiveMapPageSize(),pageByTab:{...state.pageByTab},pageScroller:getPageScroller()?.id||"document",date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFontePlanilha:false,apiWorkerFirst:EASYPANEL_URL,planilhaBridgeUrlOpcional:PLANILHA_BRIDGE_URL,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,flexDiagnostics:state.lastFlexDiagnostics||state.lastFlexPayload?.diagnostics||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
   window.VESCO_FORCE_PLANILHA = async function(){ return await refreshPlanilhaInstantanea(true); };
   window.VESCO_FORCE_SNAPSHOT_LITE = async function(){ const ok = await refreshFromEasyPanel(false); scheduleRender(true); return ok; };
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",init); else init();
-  console.log("VESCO V10.52 ativo — mobile completo, navegação touch, tabelas em cards e mapa responsivo.");
+  console.log("VESCO V10.59 ativo — menu mobile expandido e até 12 pedidos empilhados; desktop preservado.");
 })();

@@ -1,0 +1,21 @@
+VESCO DASHBOARD V10.56 — MOBILE NAVEGÁVEL / DESKTOP PRESERVADO
+
+Escopo desta versão:
+- Corrige somente a navegação e o scroll no mobile.
+- Ao trocar de módulo no celular, a nova tela abre no topo.
+- Remove o watchdog agressivo que escrevia estilos a cada 700 ms.
+- O menu lateral desktop volta ao CSS original do painel e é expandido uma vez após a atualização.
+- Nenhum Tiny Worker, worker filho, Apps Script ou banco foi alterado.
+
+Publicação:
+1. Substitua todo o conteúdo do dashboard pelo conteúdo deste ZIP.
+2. Publique na Vercel.
+3. Desktop: Ctrl+F5.
+4. Celular: feche a aba/PWA e abra novamente; se necessário, limpe os dados do site.
+
+Confirmação:
+VescoV8.debug().version
+=> V10.56-MOBILE-NAVEGAVEL-DESKTOP-PRESERVADO
+
+VescoMobileV1056.version
+=> V10.56-MOBILE-NAVEGAVEL-DESKTOP-PRESERVADO
