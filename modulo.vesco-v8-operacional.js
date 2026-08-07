@@ -1373,7 +1373,7 @@ function layout(){
   function kpis(items){ return `<div class="v8-kpis">${items.map(k=>`<div class="v8-kpi"><span>${esc(k.label)}</span><strong>${esc(k.value)}</strong><small>${esc(k.small||"")}</small></div>`).join("")}</div>`; }
   function orderCell(o){ return `<div class="v8-order"><b>#${esc(number(o)||orderKey(o))}</b>${ecom(o)?`<small>E-com: ${esc(ecom(o))}</small>`:""}</div>`; }
   function currentOperator(){
-    return txt(localStorage.getItem("vesco:v9:operador_pendencia") || localStorage.getItem("vesco:v8:operador") || window.VESCO_OPERADOR || window.operadorAtual || "Painel");
+    return txt(localStorage.getItem("vesco:v105:operador") || localStorage.getItem("vesco:v9:operador_pendencia") || localStorage.getItem("vesco:v8:operador") || window.VESCO_OPERADOR || window.operadorAtual || "Painel");
   }
   function findOrderByAnyId(id){
     const clean=txt(id).replace(/^#/,"").trim();
@@ -1883,21 +1883,31 @@ function layout(){
     list.unshift(rota);
     localStorage.setItem(ROUTES_LOCAL_KEY, JSON.stringify(list.slice(0,80)));
   }
+  function routeUpdatedMs(r){
+    const raw=txt(pick(r||{},["atualizado_em","updated_at","editado_em","criado_em","created_at"]));
+    const ms=Date.parse(raw);
+    return Number.isFinite(ms)?ms:0;
+  }
   function mergeRotas(apiRotas){
     const deleted=deletedRoutesMap();
     const map=new Map();
     (Array.isArray(apiRotas)?apiRotas:[]).forEach(r=>{
       const id=routeId(r);
       if(!id || deleted[id]) return;
-      map.set(id,r);
+      const prev=map.get(id);
+      if(!prev || routeUpdatedMs(r)>=routeUpdatedMs(prev)) map.set(id,r);
     });
-    // O conteúdo local ganha prioridade para preservar edições feitas pelo painel.
+    // RT3: local só ganha quando for realmente mais novo. Uma edição remota feita
+    // por outro operador deve substituir imediatamente uma cópia local antiga.
     localRotas().forEach(local=>{
       const id=routeId(local);
       if(!id || deleted[id]) return;
-      const remote=map.get(id)||{};
-      map.set(id,Object.assign({},remote,local,{
-        entregas:Object.assign({},remote.entregas||{},local.entregas||{})
+      const remote=map.get(id);
+      if(!remote){ map.set(id,local); return; }
+      const winner=routeUpdatedMs(local)>routeUpdatedMs(remote)?local:remote;
+      const loser=winner===local?remote:local;
+      map.set(id,Object.assign({},loser,winner,{
+        entregas:Object.assign({},loser.entregas||{},winner.entregas||{})
       }));
     });
     return Array.from(map.values()).sort((a,b)=>String(b.atualizado_em||b.criado_em||"").localeCompare(String(a.atualizado_em||a.criado_em||"")));
@@ -1908,12 +1918,17 @@ function layout(){
     if(!url) return {success:false, skipped:true, reason:"firebase_not_configured"};
     if(routeFirebaseBusy.has(rid)) return {success:false, skipped:true, reason:"already_syncing"};
     routeFirebaseBusy.add(rid);
+    const op=operadorAtual(false);
+    const now=new Date().toISOString();
     const payload=Object.assign({}, rota, {
       rota_id:rid,
       token:routeToken(rota),
-      atualizado_em:new Date().toISOString(),
-      fonte:"vesco_v1028"
+      atualizado_em:now,
+      atualizado_por:op,
+      operador_ultima_alteracao:op,
+      fonte:"vesco_v1038_rt3"
     });
+    Object.assign(rota,payload);
     const ctrl=new AbortController();
     const timer=setTimeout(()=>ctrl.abort(),15000);
     try{
@@ -1928,7 +1943,18 @@ function layout(){
       rota.__firebaseSavedAt=new Date().toISOString();
       return {success:true, backend:"firebase"};
     }catch(e){
-      console.warn("V10.27: não foi possível sincronizar a rota no Firebase.", e.message||e);
+      console.warn("V10.38-RT3: PUT REST da rota falhou; tentando SDK realtime.", e.message||e);
+      try{
+        const db=state.realtimeDb;
+        if(db && typeof db.ref==="function"){
+          await db.ref("vesco_rotas_motorista/" + firebaseSafeId(rid)).set(payload);
+          rota.__firebaseSaved=true;
+          rota.__firebaseSavedAt=new Date().toISOString();
+          return {success:true, backend:"firebase_sdk_fallback"};
+        }
+      }catch(sdkErr){
+        console.warn("V10.38-RT3: fallback SDK da rota também falhou.",sdkErr?.message||sdkErr);
+      }
       return {success:false, error:e.message||String(e)};
     }finally{
       clearTimeout(timer);
@@ -2046,6 +2072,16 @@ function fastRouteLink(rota, opts={}){
   }
   function routesForSelectedDate(){
     return (Array.isArray(state.rotas)?state.rotas:[]).filter(r=>routeMatchesSelectedDate(r,state.date));
+  }
+  function routesVisibleCreated(){
+    // RT3: Rotas criadas mostra a rota da data operacional e também uma rota
+    // criada fisicamente na data selecionada. Isso evita sumir quando um painel
+    // ficou aberto com data operacional antiga durante a virada do dia.
+    return (Array.isArray(state.rotas)?state.rotas:[]).filter(r=>{
+      if(routeMatchesSelectedDate(r,state.date)) return true;
+      const created=parseISO(pick(r,["criado_em","criadoEm","created_at"]));
+      return !!created && created===state.date;
+    });
   }
 
   function orderByRouteStop(stop){
@@ -2280,12 +2316,27 @@ function fastRouteLink(rota, opts={}){
   function applyRealtimeRoutes(routesObj){
     routesObj=routesObj&&typeof routesObj==="object"?routesObj:{};
     const remote=Object.keys(routesObj).map(k=>Object.assign({rota_id:k},routesObj[k]||{}));
-    state.rotas=mergeRotas(remote);
+    // Mantém outras rotas já conhecidas e deixa a versão mais nova vencer.
+    state.rotas=mergeRotas((state.rotas||[]).concat(remote));
     const delivered=deliveredFromFirebaseRoutesObj(routesObj);
     const keep=(state.deliveredExternal||[]).filter(o=>!o.__fromFirebaseRoute);
     state.deliveredExternal=dedup(keep.concat(delivered));
     saveLocalSnapshot(snapshotFromState());
     scheduleRealtimeRender("rotas_entregas");
+  }
+  function applyRealtimeRouteChild(id,value,removed=false){
+    id=txt(id); if(!id) return;
+    if(removed){
+      state.rotas=(state.rotas||[]).filter(r=>routeId(r)!==id);
+      removeLocalRota(id);
+      scheduleRealtimeRender("rota_removida");
+      return;
+    }
+    const rota=Object.assign({rota_id:id,id},value||{});
+    state.rotas=mergeRotas((state.rotas||[]).filter(r=>routeId(r)!==id).concat([rota]));
+    saveLocalRota(rota);
+    saveLocalSnapshot(snapshotFromState());
+    scheduleRealtimeRender("rota_alterada");
   }
   function startRealtimeFallback(){
     if(state.realtimeFallbackTimer) return;
@@ -2307,7 +2358,7 @@ function fastRouteLink(rota, opts={}){
   function stopRealtimeSync(){
     try{
       Object.values(state.realtimeRefs||{}).forEach(item=>{
-        if(item?.ref && item?.cb) item.ref.off("value",item.cb);
+        if(item?.ref && item?.cb) item.ref.off(item.event||"value",item.cb);
       });
     }catch(e){}
     state.realtimeRefs={};
@@ -2326,15 +2377,28 @@ function fastRouteLink(rota, opts={}){
         const latestRef=db.ref(firebaseOperationPath("latest"));
         const ordersCb=snap=>applyRealtimeOrderPatches(snap.val()||{});
         const routesCb=snap=>applyRealtimeRoutes(snap.val()||{});
+        const routeAddedCb=snap=>applyRealtimeRouteChild(snap.key,snap.val()||{},false);
+        const routeChangedCb=snap=>applyRealtimeRouteChild(snap.key,snap.val()||{},false);
+        const routeRemovedCb=snap=>applyRealtimeRouteChild(snap.key,null,true);
         const latestCb=snap=>{
           applyRealtimeWorkerSnapshot(snap.val()||null)
             .catch(err=>console.warn("V10.38-RT: snapshot realtime falhou.",err?.message||err));
         };
         ordersRef.on("value",ordersCb,err=>console.warn("V10.38-RT: listener pedidos falhou.",err?.message||err));
-        routesRef.on("value",routesCb,err=>console.warn("V10.38-RT: listener rotas falhou.",err?.message||err));
+        routesRef.on("value",routesCb,err=>console.warn("V10.38-RT3: listener raiz de rotas falhou.",err?.message||err));
+        routesRef.on("child_added",routeAddedCb,err=>console.warn("V10.38-RT3: child_added rota falhou.",err?.message||err));
+        routesRef.on("child_changed",routeChangedCb,err=>console.warn("V10.38-RT3: child_changed rota falhou.",err?.message||err));
+        routesRef.on("child_removed",routeRemovedCb,err=>console.warn("V10.38-RT3: child_removed rota falhou.",err?.message||err));
         latestRef.on("value",latestCb,err=>console.warn("V10.38-RT: listener novos pedidos falhou.",err?.message||err));
         state.realtimeDb=db;
-        state.realtimeRefs={orders:{ref:ordersRef,cb:ordersCb},routes:{ref:routesRef,cb:routesCb},latest:{ref:latestRef,cb:latestCb}};
+        state.realtimeRefs={
+          orders:{ref:ordersRef,cb:ordersCb},
+          routes:{ref:routesRef,cb:routesCb},
+          routeAdded:{ref:routesRef,cb:routeAddedCb,event:"child_added"},
+          routeChanged:{ref:routesRef,cb:routeChangedCb,event:"child_changed"},
+          routeRemoved:{ref:routesRef,cb:routeRemovedCb,event:"child_removed"},
+          latest:{ref:latestRef,cb:latestCb}
+        };
         state.realtimeAttached=true;
         if(state.realtimeFallbackTimer){clearInterval(state.realtimeFallbackTimer);state.realtimeFallbackTimer=null;}
         console.log("VESCO V10.38-RT realtime ativo: operadores, pedidos novos, rotas e entregas.");
@@ -2347,7 +2411,7 @@ function fastRouteLink(rota, opts={}){
     return {ok:true,mode:"polling_8s"};
   }
   function realtimeStatus(){
-    return {attached:state.realtimeAttached,mode:state.realtimeAttached?"firebase":"polling_8s",workerLatestListener:Boolean(state.realtimeRefs&&state.realtimeRefs.latest),lastAt:state.realtimeLastAt,lastReason:state.realtimeLastReason,lastSnapshotSource:state.lastSnapshotSource||"",orders:(state.orders||[]).length,routesToday:routesForSelectedDate().length,deliveredToday:entreguesList().length};
+    return {attached:state.realtimeAttached,mode:state.realtimeAttached?"firebase":"polling_8s",workerLatestListener:Boolean(state.realtimeRefs&&state.realtimeRefs.latest),routeRootListener:Boolean(state.realtimeRefs&&state.realtimeRefs.routes),routeChildListener:Boolean(state.realtimeRefs&&state.realtimeRefs.routeAdded&&state.realtimeRefs.routeChanged),lastAt:state.realtimeLastAt,lastReason:state.realtimeLastReason,lastSnapshotSource:state.lastSnapshotSource||"",operator:currentOperator(),orders:(state.orders||[]).length,routesToday:routesForSelectedDate().length,routesVisible:routesVisibleCreated().length,deliveredToday:entreguesList().length};
   }
   function mapsDriverUrl(loc){
     const la=locLat(loc), lo=locLon(loc);
@@ -2934,6 +2998,7 @@ function renderDriverLiveMap(forceFit=false){
     if(!stops.length){ alert("A rota precisa ter pelo menos um pedido."); return false; }
     const pedidos=stops.map(routeEditStopKey).filter(Boolean);
     const original=(state.rotas||[]).find(r=>routeId(r)===routeEditDraft.id)||routeEditDraft.original||{};
+    const op=operadorAtual(false);
     const updated=Object.assign({},original,{
       rota_id:routeEditDraft.id,
       id:routeEditDraft.id,
@@ -2948,6 +3013,9 @@ function renderDriverLiveMap(forceFit=false){
       status:txt(original.status)||"ativa",
       atualizado_em:new Date().toISOString(),
       editado_em:new Date().toISOString(),
+      editado_por:op,
+      atualizado_por:op,
+      operador_ultima_alteracao:op,
       __local:true,
       __firebaseSaved:false
     });
@@ -2984,7 +3052,7 @@ function renderDriverLiveMap(forceFit=false){
   }
 
   function renderRotasCriadas(){
-    const rotas=routesForSelectedDate();
+    const rotas=routesVisibleCreated();
     if(!rotas.length) return '<div class="v8-empty"><b>Nenhuma rota criada nesta data.</b></div>';
     const collapsed=!!state.rotasCriadasCollapsed;
     const visible=collapsed ? rotas.slice(0,3) : rotas;
@@ -2992,7 +3060,12 @@ function renderDriverLiveMap(forceFit=false){
     const rows=visible.map(r=>{
       const app=routeMotoristaLink(r), maps=routeGoogleMapsLink(r), waze=routeWazeLink(r), wa=whatsappRouteLink(r,app);
       const rid=routeId(r);
-      return `<div class="v8-route-item" data-route-id="${esc(rid)}"><div><b>${esc(r.nome_rota||r.nome||"Rota")}</b><span>Motorista: ${esc(r.motorista||"—")} • Pedidos: ${routePedidosCount(r)} • ${esc(r.editado_em?"Editada em "+brDateTime(r.editado_em):(r.criado_em||r.criadoEm||""))}</span></div><div class="v8-route-actions"><a class="v8-btn" href="${esc(app)}" target="_blank" rel="noopener">App motorista</a><a class="v8-btn secondary" href="${esc(maps)}" target="_blank" rel="noopener">Google Maps</a><a class="v8-btn orange" href="${esc(waze)}" target="_blank" rel="noopener">Waze</a><button type="button" class="v8-btn secondary" data-link="${esc(app)}" onclick="VescoV8.copyRouteLinkDirect(this.dataset.link)">Copiar link</button><a class="v8-btn green" href="${esc(wa)}" target="_blank" rel="noopener">WhatsApp</a><span class="v1027-route-manage"><button type="button" class="v8-btn v1027-route-edit" data-route-id="${esc(rid)}" onclick="VescoV8.openEditRouteModal(this.dataset.routeId)">Editar</button><button type="button" class="v8-btn v1027-route-delete" data-route-id="${esc(rid)}" onclick="VescoV8.deleteRoute(this.dataset.routeId)">Excluir</button></span></div></div>`;
+      const criador=txt(r.criado_por||r.operador_criacao||r.operador||"");
+      const editor=txt(r.editado_por||r.atualizado_por||r.operador_ultima_alteracao||"");
+      const autoria=r.editado_em && editor ? ` • Editada por: ${esc(editor)}` : (criador ? ` • Criada por: ${esc(criador)}` : "");
+      const dataRota=routeDateISO(r);
+      const dataInfo=dataRota && dataRota!==state.date ? ` • Rota: ${esc(br(dataRota))}` : "";
+      return `<div class="v8-route-item" data-route-id="${esc(rid)}"><div><b>${esc(r.nome_rota||r.nome||"Rota")}</b><span>Motorista: ${esc(r.motorista||"—")} • Pedidos: ${routePedidosCount(r)}${autoria}${dataInfo} • ${esc(r.editado_em?"Editada em "+brDateTime(r.editado_em):(r.criado_em||r.criadoEm||""))}</span></div><div class="v8-route-actions"><a class="v8-btn" href="${esc(app)}" target="_blank" rel="noopener">App motorista</a><a class="v8-btn secondary" href="${esc(maps)}" target="_blank" rel="noopener">Google Maps</a><a class="v8-btn orange" href="${esc(waze)}" target="_blank" rel="noopener">Waze</a><button type="button" class="v8-btn secondary" data-link="${esc(app)}" onclick="VescoV8.copyRouteLinkDirect(this.dataset.link)">Copiar link</button><a class="v8-btn green" href="${esc(wa)}" target="_blank" rel="noopener">WhatsApp</a><span class="v1027-route-manage"><button type="button" class="v8-btn v1027-route-edit" data-route-id="${esc(rid)}" onclick="VescoV8.openEditRouteModal(this.dataset.routeId)">Editar</button><button type="button" class="v8-btn v1027-route-delete" data-route-id="${esc(rid)}" onclick="VescoV8.deleteRoute(this.dataset.routeId)">Excluir</button></span></div></div>`;
     }).join("");
     return header + rows + (collapsed && rotas.length>3 ? `<div class="v1021-routes-fade">Rotas antigas recolhidas para deixar a tela mais limpa.</div>` : "");
   }
@@ -3216,7 +3289,7 @@ function renderDriverLiveMap(forceFit=false){
             </table>
           </div>
 
-          <div class="v8-card-head v9-routes-created"><div><h3>Rotas criadas</h3><small>${routesForSelectedDate().length} rota(s) na data</small></div></div>
+          <div class="v8-card-head v9-routes-created"><div><h3>Rotas criadas</h3><small>${routesVisibleCreated().length} rota(s) visível(is)</small></div></div>
           <div class="v8-routes-list">${renderRotasCriadas()}</div>
 
           <div class="v8-card-head v94-route-orders-head">
@@ -3288,6 +3361,8 @@ function renderDriverLiveMap(forceFit=false){
     const nome=txt(document.getElementById("v8RotaNome")?.value)||("Rota " + br(state.date));
     const rotaId="rota-" + Date.now();
     const token=(crypto && crypto.randomUUID ? crypto.randomUUID().replace(/-/g,"").slice(0,24) : (Math.random().toString(36).slice(2)+Date.now().toString(36))).slice(0,24);
+    const op=operadorAtual(false);
+    const createdNow=new Date().toISOString();
     const rotaLocal={
       rota_id:rotaId,
       id:rotaId,
@@ -3302,7 +3377,13 @@ function renderDriverLiveMap(forceFit=false){
       paradas_json:JSON.stringify(paradas),
       status:"ativa",
       dataISO:state.date,
-      criado_em:new Date().toISOString(),
+      data_criacao_iso:todayISO(),
+      criado_em:createdNow,
+      atualizado_em:createdNow,
+      criado_por:op,
+      operador_criacao:op,
+      atualizado_por:op,
+      operador_ultima_alteracao:op,
       __local:true
     };
 
@@ -3333,6 +3414,11 @@ function renderDriverLiveMap(forceFit=false){
         motorista,
         origem,
         nome_rota:nome,
+        operador:op,
+        criado_por:op,
+        operador_criacao:op,
+        atualizado_por:op,
+        operador_ultima_alteracao:op,
         pedidos_json:JSON.stringify(pedidos),
         pedidos:JSON.stringify(pedidos),
         paradas_json:JSON.stringify(paradas),
@@ -3350,7 +3436,7 @@ function renderDriverLiveMap(forceFit=false){
   async function updateStatus(id,statusNovo){
     // V10.21: status instantâneo no Firebase com operador e horário real de separação.
     try{
-      const op=operadorAtual(true);
+      const op=operadorAtual(false);
       const nowISO=new Date().toISOString();
       const st=norm(statusNovo);
       const o=findOrderByAnyId(id)||{};
@@ -4411,7 +4497,7 @@ function mapOrderId(o){ return txt(number(o)||orderKey(o)||ecom(o)).replace(/^#/
   async function ensureData(){ if(!state.loaded) await loadData(true); }
   async function go(tab){ state.tab=tab; await ensureData(); render(); }
   function interceptOldClicks(){ document.addEventListener("click",e=>{ const btn=e.target.closest?.("[data-v7tab], [data-v8tab], #v7Sidebar button, .tab-nav button"); if(!btn)return; const label=norm(btn.dataset.v7tab||btn.dataset.v8tab||btn.textContent||""); const map={"dashboard":"dashboard","separacao":"separacao","separados hoje":"separados","separados":"separados","logistica":"logistica","logistica erp":"logistica","logística":"logistica","pronto para envio":"saiu","retiradas":"retiradas","tarefas frota":"tarefas","tarefas":"tarefas","frota":"tarefas","envios flex":"flex","flex":"flex","entregues":"entregues"}; const tab=map[label]||(label.includes("separados")?"separados":label.includes("log")?"logistica":label.includes("flex")?"flex":""); if(tab){e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); go(tab);}},true); }
-  async function init(){ state.tarefas=loadTarefas(); autoCleanFlexStorageV87(); layout(); interceptOldClicks(); window.focusOrderOnMap=id=>focus("logistica",id); window.focusFlexOnMap=id=>focus("flex",id); await loadData(true); startRealtimeSync(); render(); }
+  async function init(){ operadorAtual(false); state.tarefas=loadTarefas(); autoCleanFlexStorageV87(); layout(); interceptOldClicks(); window.focusOrderOnMap=id=>focus("logistica",id); window.focusFlexOnMap=id=>focus("flex",id); await loadData(true); startRealtimeSync(); render(); }
   window.VescoV8={__v82:true,__v821:true,__v84:true,__v86:true,__v861:true,__v87:true,__v871:true,__v872:true,__v873:true,__v874:true,__v875:true,__v876:true,__v90:true,__v91:true,__v92:true,__v921:true,__v922:true,__v93:true,__v94:true,__v95:true,__v100:true,__v101:true,__v102:true,__v103:true,__v104:true,__v105:true,__v106:true,__v107:true,__v108:true,__v109:true,__v1010:true,__v1011:true,__v1012:true,__v1013:true,__v1014:true,__v1015:true,__v1016:true,__v1017:true,__v1018:true,__v1019:true,__v1020:true,__v1021:true,__v1027:true,__v1028:true,__v1032:true,__v1033:true,__v1034:true,__v1035:true,__v1038:true,state,init,go,
     openFlexMonth:async(month)=>{state.month=month||state.month; const m=document.getElementById("v8Month"); if(m)m.value=state.month; await loadData(true); renderFlex();},
     saveFlexMonthNow:()=>{const saved=saveStoredFlex(flexList(),state.month); alert(saved.saved?`Mês armazenado: ${monthLabel(saved.month)} — ${saved.total} pedido(s).`:`Nada novo para armazenar em ${monthLabel(saved.month)}.`); renderFlex(); return saved;},
@@ -4419,14 +4505,14 @@ function mapOrderId(o){ return txt(number(o)||orderKey(o)||ecom(o)).replace(/^#/
     clearFlexStorage:()=>{const removed=clearFlexStorage(); alert(`Armazenamento Flex limpo: ${removed.length} item(ns). Clique em Atualizar Flex.`); renderFlex(); return removed;},
     autoCleanFlexStorageV87,
     sleep,
-    routeReadyList,routeFlexExtras,addFlexToRouteByCode,removeFlexFromRoute,routeMotoristaLink,routeOfflinePayload,encodeRoutePayload,routeOrdersRows,routeOrdersStats,renderPedidosEmRota,confirmarEntregaRotaSite,openMapForRouteOrder,shareRouteById,openShareRouteModal,copyShareInput,closeShareModal,copyRouteLinkById,copyRouteLinkDirect,openWhatsAppRouteById,toggleRotasCriadas,openEditRouteModal,closeEditRouteModal,routeEditAddOrder,routeEditRemoveStop,routeEditMoveStop,saveRouteEdit,deleteRoute,abrirPedidoNoMapa,abrirCorrecaoEndereco,marcarComoRetirada,whatsappRouteLink,saveRouteFirebase,testFirebaseRoutes,fastRouteLink,localRotas,firebasePatchOrder,refreshFromAppsScriptBackground,loadFirebaseSnapshot,saveFirebaseSnapshot,refreshEntreguesAgora,loadDeliveredFromFirebaseRoutes,refreshMotoristasLocalizacao,renderMotoristasAoVivo,safeRenderMotoristasAoVivo,renderDriverLiveMap,mostrarMotoristaNoMapa,focarMotoristaRota,startMotoristaTrackingPolling,stopMotoristaTrackingPolling,startRealtimeSync,stopRealtimeSync,realtimeStatus,routesForSelectedDate,routeDateISO,
+    routeReadyList,routeFlexExtras,addFlexToRouteByCode,removeFlexFromRoute,routeMotoristaLink,routeOfflinePayload,encodeRoutePayload,routeOrdersRows,routeOrdersStats,renderPedidosEmRota,confirmarEntregaRotaSite,openMapForRouteOrder,shareRouteById,openShareRouteModal,copyShareInput,closeShareModal,copyRouteLinkById,copyRouteLinkDirect,openWhatsAppRouteById,toggleRotasCriadas,openEditRouteModal,closeEditRouteModal,routeEditAddOrder,routeEditRemoveStop,routeEditMoveStop,saveRouteEdit,deleteRoute,abrirPedidoNoMapa,abrirCorrecaoEndereco,marcarComoRetirada,whatsappRouteLink,saveRouteFirebase,testFirebaseRoutes,fastRouteLink,localRotas,firebasePatchOrder,refreshFromAppsScriptBackground,loadFirebaseSnapshot,saveFirebaseSnapshot,refreshEntreguesAgora,loadDeliveredFromFirebaseRoutes,refreshMotoristasLocalizacao,renderMotoristasAoVivo,safeRenderMotoristasAoVivo,renderDriverLiveMap,mostrarMotoristaNoMapa,focarMotoristaRota,startMotoristaTrackingPolling,stopMotoristaTrackingPolling,startRealtimeSync,stopRealtimeSync,realtimeStatus,routesForSelectedDate,routesVisibleCreated,routeDateISO,
     salvarDetalhesPedido,marcarPendenciaProduto,resolverPendenciaProduto,pendenciasProdutoList,abrirRelatorioPendencia,abrirObsLinkPedido,salvarObsLinkPedido,salvarRelatorioPendencia,fecharPedidoModal,
     runFlexGeocode,statusFlexGeocode,autoGeocodeMap,geocodeAddressViaFlexApi,openMapForOrder,openGoogleMapsForList,googleMapsDirectionsUrlFromOrders,
     renderTarefasFrota,registrarTarefaFrota,concluirTarefaFrota,removerTarefaFrota,tarefasFrotaList,
     sidebar:()=>{state.sidebarCollapsed=!state.sidebarCollapsed; document.body.classList.toggle("v8-sidebar-collapsed",state.sidebarCollapsed); localStorage.setItem("vesco:v8:sidebarCollapsed",state.sidebarCollapsed?"1":"0");},
-    today:async()=>{state.date=todayISO(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; await loadData(true); render();},refresh:async()=>{await loadData(true); render();},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,definirOperador,operadorAtual,produtosText,pagamentoText,renderSeparacao,renderProntoEnvio,selectMapMarker,navigateMapMarker,toggleMapFullscreen,locateUserOnMap,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{linhaAoVivoMultipontos:true,statusRealtimeFix:true,retiradaRecebedorFix:true,rotaCalculadaFix:true,entreguesComprovantesFix:true,entreguesFirebaseDireto:true,leituraInteligenteV1019:true,realtimeInstantaneo:true,retiradaInteligente:true,firebaseLimpoV1020:true,semPedidoFantasma:true,realtimeLimitado:true,retiradaOlistV1021:true,rotasRecolhiveis:true,botaoMapaPedido:true,separadosStatusEstrito:true,flexMirrorVesco:true,mobileCards:true,mobileForceLayout:true,mobileAndroidIOS:true,mobileFormsVisible:true,mobileKeyboardSafe:true,pendingFormMobileFixed:true,pendingControlsAccessible:true,flexMapNavigator:false,flexMapFullscreen:true,flexLayoutPreservado:true,flexMapViewPersistente:true,flexMapAutoFitSomenteInicial:true,responsiveUniversal:true,phoneTabletDesktop:true,mobileTapFallback:true,prontoSomenteSeparacaoConcluida:true,prontoHistoricoSemData:true,rotaExclusaoTodasDatas:true,statusTinyNaoLiberaRota:true,version:"V10.38-RT2-PRONTO-HISTORICO",firebaseRoot:FIREBASE_OPERATION_ROOT,realtime:realtimeStatus(),date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
+    today:async()=>{state.date=todayISO(); const d=document.getElementById("v8Date"); if(d)d.value=state.date; await loadData(true); render();},refresh:async()=>{await loadData(true); render();},render,renderDashboard,renderLogistica,renderFlex,renderRetiradas,renderEntregues,renderSeparados,renderMap,logisticaList,flexList,retiradaList,entreguesList,separadosList,marcarRetirada,updateStatus,definirOperador,operadorAtual,produtosText,pagamentoText,renderSeparacao,renderProntoEnvio,selectMapMarker,navigateMapMarker,toggleMapFullscreen,locateUserOnMap,copyRouteLink,routeMotoristaLink,routeGoogleMapsLink,routeWazeLink,parseMoney,debug(){return{linhaAoVivoMultipontos:true,statusRealtimeFix:true,retiradaRecebedorFix:true,rotaCalculadaFix:true,entreguesComprovantesFix:true,entreguesFirebaseDireto:true,leituraInteligenteV1019:true,realtimeInstantaneo:true,retiradaInteligente:true,firebaseLimpoV1020:true,semPedidoFantasma:true,realtimeLimitado:true,retiradaOlistV1021:true,rotasRecolhiveis:true,botaoMapaPedido:true,separadosStatusEstrito:true,flexMirrorVesco:true,mobileCards:true,mobileForceLayout:true,mobileAndroidIOS:true,mobileFormsVisible:true,mobileKeyboardSafe:true,pendingFormMobileFixed:true,pendingControlsAccessible:true,flexMapNavigator:false,flexMapFullscreen:true,flexLayoutPreservado:true,flexMapViewPersistente:true,flexMapAutoFitSomenteInicial:true,responsiveUniversal:true,phoneTabletDesktop:true,mobileTapFallback:true,prontoSomenteSeparacaoConcluida:true,prontoHistoricoSemData:true,rotaExclusaoTodasDatas:true,rotasRealtimeChild:true,operadorSessaoPersistente:true,rotasComAutoria:true,statusTinyNaoLiberaRota:true,version:"V10.38-RT3-ROTAS-OPERADOR",firebaseRoot:FIREBASE_OPERATION_ROOT,realtime:realtimeStatus(),date:state.date,month:state.month,loaded:state.loaded,orders:state.orders.length,flex:state.flex.length,logistica:logisticaList().length,retiradas:retiradaList().length,entregues:entreguesList().length,separados:separadosList().length,pendencias:pendenciasProdutoList().length,erpMonth:state.orders.filter(inMonth).length,flexMonth:state.flex.filter(inMonth).length,api:API_MAIN,apiFlex:API_FLEX,payloadCounts:state.lastPayload?.counts||null,flexRaw:state.lastFlexRawCount,flexAccepted:state.lastFlexAcceptedCount,flexRejectedSamples:state.lastFlexRejectedSamples,flexPayloadVersion:state.lastFlexPayload?.version||state.lastFlexPayload?.data?.version||null,flexPayloadTotal:state.lastFlexPayload?.total||state.lastFlexPayload?.data?.total||null,flexPayloadPorConta:state.lastFlexPayload?.por_conta||state.lastFlexPayload?.data?.por_conta||null,sampleFlex:flexList().slice(0,3).map(o=>({pedido:number(o),ecom:ecom(o),conta:pick(o,["conta","loja","store_name"]),marcador:flexMarker(o),validado:flexValidated(o),source:pick(o,["__v8source","__source"]),status:statusAll(o),delivered:isDelivered(o)})),sampleLog:logisticaList().slice(0,3).map(o=>({pedido:number(o),status:statusAll(o),delivered:isDelivered(o),date:dueDate(o)}))}}};
   if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",init); else init();
-  console.log("VESCO V10.38-RT2 ativo — realtime + Pronto para Envio acumulado sem limite de data.");
+  console.log("VESCO V10.38-RT3 ativo — rotas realtime entre operadores + autoria persistente.");
 })();
 // modulo.pronto-flex-fix-v1.js — V1.0
 // Correção isolada para "Pronto para Envio":

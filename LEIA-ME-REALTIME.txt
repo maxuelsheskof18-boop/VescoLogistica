@@ -1,0 +1,50 @@
+VESCO CONTROL — V10.38-RT PEDIDOS NOVOS EM TEMPO REAL
+
+OBJETIVO
+- Alteração feita por operador aparece nos outros painéis via Firebase.
+- Pedido novo publicado pelo vesco-worker em vesco_operacao_v2/latest aparece sem F5.
+- Não altera Tiny Work, Apps Script, planilha, Flex, checkout, rotas ou regras de origem.
+
+ARQUIVO A SUBSTITUIR NO FRONT-END
+1. Substitua somente:
+   modulo.vesco-v8-operacional.js
+
+O arquivo vesco-firebase-realtime.js atual pode permanecer.
+
+CACHE BUST
+No index.html/logistica.html, se hoje estiver:
+  <script src="modulo.vesco-v8-operacional.js?v=1038"></script>
+
+troque apenas o sufixo para:
+  <script src="modulo.vesco-v8-operacional.js?v=1038rt1"></script>
+
+Depois faça deploy no Vercel e Ctrl+F5.
+
+COMO FUNCIONA
+- vesco_operacao_v2/orders -> patches de operador
+- vesco_rotas_motorista -> rotas/entregas
+- vesco_operacao_v2/latest -> snapshot de pedidos novos/alterados vindo do worker
+
+O listener de latest atualiza apenas state.orders (ERP). Flex, rotas, entregas e outros estados são preservados.
+
+TESTE
+Abra o console do navegador e rode:
+  VescoV8.realtimeStatus()
+
+Esperado:
+  attached: true
+  mode: "firebase"
+  workerLatestListener: true
+
+Teste com dois computadores:
+1. Abra o painel nos dois.
+2. No primeiro, altere o status de um pedido.
+3. O segundo deve mudar sem atualizar a página.
+4. Depois deixe entrar/sincronizar um pedido novo no worker.
+5. Assim que o worker gravar vesco_operacao_v2/latest, o pedido deve surgir nos dois painéis sem F5.
+
+LATENCIA
+- Mudança de operador: praticamente imediata após a gravação no Firebase.
+- Pedido novo do Tiny: o painel recebe imediatamente após o worker detectar/gravar.
+  Com AUTO_SYNC_INTERVAL_MS=30000, a descoberta no Tiny ainda pode levar até ~30 s.
+  Para segundos desde a criação no Tiny, é necessário webhook no backend; isso é separado do realtime do painel.
